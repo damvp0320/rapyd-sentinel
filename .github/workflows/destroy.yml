@@ -1,0 +1,61 @@
+name: destroy
+
+# Manual teardown of everything created by deploy.yml. Type "destroy" in the confirm input to run it.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "destroy" to tear down both VPCs, both clusters and the peering link'
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-terraform
+  cancel-in-progress: false
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_DIR: terraform/envs/poc
+
+jobs:
+  destroy:
+    if: inputs.confirm == 'destroy'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.10.5
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      # Load balancers created by Kubernetes Services live outside Terraform. If they are left behind
+      # they keep ENIs and security groups alive and the VPC cannot be deleted, so remove them first.
+      - name: Delete Kubernetes load balancers (best effort)
+        run: |
+          for cluster in eks-gateway eks-backend; do
+            if aws eks describe-cluster --name "$cluster" >/dev/null 2>&1; then
+              echo "::group::$cluster"
+              aws eks update-kubeconfig --name "$cluster"
+              kubectl get svc -A -o json \
+                | jq -r '.items[] | select(.spec.type=="LoadBalancer") | "\(.metadata.namespace) \(.metadata.name)"' \
+                | while read -r ns name; do kubectl delete svc -n "$ns" "$name" --wait --timeout=180s || true; done
+              echo "::endgroup::"
+            else
+              echo "$cluster not found, skipping"
+            fi
+          done
+          sleep 60 # let AWS finish removing the load balancer ENIs
+
+      - name: terraform init
+        run: terraform -chdir="$TF_DIR" init -input=false -backend-config="bucket=${{ vars.STATE_BUCKET }}"
+
+      - name: terraform destroy
+        run: terraform -chdir="$TF_DIR" destroy -input=false -auto-approve
