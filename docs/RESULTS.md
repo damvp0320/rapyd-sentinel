@@ -87,8 +87,8 @@ Same structure as `PROGRESS.md`. Each completed activity records what actually h
 ### Stage 7: Documentation and wrap-up
 **Purpose:** Finish the deliverables: final architecture diagram, an honest README (how to run, networking, trade-offs, next steps), the destroy workflow and a clean final run before submitting.
 
-- [ ] 20. Final architecture diagram saved to `docs/assets/architecture.png`
-  - **RESULT:** pending. A code-generated version was produced and rejected; the diagram will be done another way.
+- [x] 20. Final architecture diagram saved to `docs/assets/architecture.png`
+  - **RESULT:** `docs/assets/architecture.png` is a simplified diagram of the deployed system, produced with an image generator after several rounds of review against the real deployment (an earlier attempt to draw it from code and a draw.io file were discarded). It shows both VPCs with CIDRs in eu-west-3, public and private subnets per AZ, 2 NAT Gateways and 1 Internet Gateway per VPC, the public NLB and the internal NLB, both EKS clusters with 2 pods each, the VPC peering, the numbered request path 1 to 4 (the path into the backend ends at the internal NLB) and the blocked internet access to the backend (red arrow stops at the VPC border; the backend Internet Gateway is egress only, with no solid line touching it). Known simplifications: no resource IDs (so it stays valid after a rebuild), no route tables (documented as a table in the README instead), only one NGINX pod shown sending into the peering link, and the load balancers are drawn as single icons although they span both AZs. Lessons: image generators repeatedly drew arrows wrongly (an arrow ending at a pod instead of the internal NLB, arrowheads pointing into NAT gateways, a wrong region), so the diagram was only accepted after checking every arrow against the real flow.
 - [ ] 21. README: how to run, networking, proxy-to-backend flow, CI/CD overview, permission limits hit, trade-offs, next steps
   - **RESULT:** pending
 - [ ] 22. Manual-only `destroy.yml`, final clean run from a fresh push, then submit
