@@ -21,6 +21,8 @@ env:
   TF_IN_AUTOMATION: "true"
   TF_VERSION: 1.10.5
   TF_DIR: terraform/envs/poc
+  BACKEND_CLUSTER: eks-backend
+  GATEWAY_CLUSTER: eks-gateway
 
 jobs:
   plan:
@@ -99,3 +101,77 @@ jobs:
             terraform -chdir="$TF_DIR" output
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # -------------------------------------------------------------------------
+  # Workloads. Order matters: the gateway config needs the backend's NLB hostname.
+  # -------------------------------------------------------------------------
+  deploy-backend:
+    needs: apply
+    runs-on: ubuntu-latest
+    outputs:
+      backend_host: ${{ steps.lb.outputs.host }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Configure kubectl for eks-backend
+        run: aws eks update-kubeconfig --name "$BACKEND_CLUSTER"
+
+      - name: Deploy backend
+        run: |
+          kubectl apply -f k8s/backend/namespace.yaml
+          kubectl apply -f k8s/backend/
+          kubectl -n sentinel rollout status deployment/backend --timeout=300s
+
+      - name: Wait for the internal NLB hostname
+        id: lb
+        run: |
+          for i in $(seq 1 60); do
+            host=$(kubectl -n sentinel get svc backend -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+            [ -n "$host" ] && break
+            sleep 10
+          done
+          test -n "$host" || { echo "backend NLB hostname not assigned"; exit 1; }
+          echo "host=$host" >> "$GITHUB_OUTPUT"
+          echo "### Backend internal NLB: \`$host\`" >> "$GITHUB_STEP_SUMMARY"
+
+  deploy-gateway:
+    needs: deploy-backend
+    runs-on: ubuntu-latest
+    outputs:
+      gateway_host: ${{ steps.lb.outputs.host }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Configure kubectl for eks-gateway
+        run: aws eks update-kubeconfig --name "$GATEWAY_CLUSTER"
+
+      - name: Render manifests with the backend NLB hostname
+        run: ./scripts/render-gateway.sh "${{ needs.deploy-backend.outputs.backend_host }}" rendered/gateway
+
+      - name: Deploy gateway
+        run: |
+          kubectl apply -f rendered/gateway/namespace.yaml
+          kubectl apply -f rendered/gateway/
+          kubectl -n sentinel rollout status deployment/gateway --timeout=300s
+
+      - name: Wait for the public NLB hostname
+        id: lb
+        run: |
+          for i in $(seq 1 60); do
+            host=$(kubectl -n sentinel get svc gateway -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+            [ -n "$host" ] && break
+            sleep 10
+          done
+          test -n "$host" || { echo "gateway NLB hostname not assigned"; exit 1; }
+          echo "host=$host" >> "$GITHUB_OUTPUT"
+          echo "### Public gateway NLB: \`$host\`" >> "$GITHUB_STEP_SUMMARY"
