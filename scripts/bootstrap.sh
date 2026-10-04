@@ -7,7 +7,10 @@ REGION="${AWS_REGION:-eu-west-3}"
 REPO="${GITHUB_REPOSITORY:-damvp0320/rapyd-sentinel}"
 ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
 STATE_BUCKET="sentinel-tfstate-damian-${ACCOUNT_ID}"
-ROLE_NAME="sentinel-damian-gha"
+# The scoped IAM user can create roles but NOT update a trust policy (iam:UpdateAssumeRolePolicy is denied),
+# so a trust policy fix means a new role name. v1 trusted only the plain GitHub subject format.
+ROLE_NAME="sentinel-damian-gha-v2"
+OLD_ROLE_NAME="sentinel-damian-gha"
 OIDC_ARN="arn:aws:iam::${ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com"
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
@@ -57,6 +60,12 @@ fi
 POLICY="$(sed "s/__STATE_BUCKET__/${STATE_BUCKET}/g" "$DIR/policies/gha-permissions.json")"
 step "iam:PutRolePolicy (inline deploy policy)" aws iam put-role-policy --role-name "$ROLE_NAME" \
   --policy-name sentinel-damian-deploy --policy-document "$POLICY"
+
+echo "== Cleanup of superseded role ${OLD_ROLE_NAME} (best effort)"
+if aws iam get-role --role-name "$OLD_ROLE_NAME" >/dev/null 2>&1; then
+  step "iam:DeleteRolePolicy (${OLD_ROLE_NAME})" aws iam delete-role-policy --role-name "$OLD_ROLE_NAME" --policy-name sentinel-damian-deploy \
+    && step "iam:DeleteRole (${OLD_ROLE_NAME})" aws iam delete-role --role-name "$OLD_ROLE_NAME"
+fi
 
 echo "== Can we create eks-* roles and attach managed policies? (create + delete throwaway role)"
 PROBE="eks-damian-probe"
