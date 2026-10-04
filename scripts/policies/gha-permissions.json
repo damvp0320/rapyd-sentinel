@@ -1,0 +1,35 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "NetworkingAndCompute",
+      "Effect": "Allow",
+      "Action": ["ec2:*", "elasticloadbalancing:*", "eks:*", "autoscaling:*", "logs:*"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "StateBucket",
+      "Effect": "Allow",
+      "Action": "s3:*",
+      "Resource": ["arn:aws:s3:::__STATE_BUCKET__", "arn:aws:s3:::__STATE_BUCKET__/*"]
+    },
+    {
+      "Sid": "ScopedRoles",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateRole", "iam:DeleteRole", "iam:GetRole", "iam:UpdateRole",
+        "iam:TagRole", "iam:UntagRole", "iam:ListRolePolicies", "iam:ListAttachedRolePolicies",
+        "iam:ListInstanceProfilesForRole", "iam:AttachRolePolicy", "iam:DetachRolePolicy",
+        "iam:PutRolePolicy", "iam:GetRolePolicy", "iam:DeleteRolePolicy",
+        "iam:UpdateAssumeRolePolicy", "iam:PassRole"
+      ],
+      "Resource": ["arn:aws:iam::*:role/eks-damian-*", "arn:aws:iam::*:role/sentinel-damian-*"]
+    },
+    {
+      "Sid": "ServiceLinkedRoles",
+      "Effect": "Allow",
+      "Action": ["iam:CreateServiceLinkedRole", "iam:GetPolicy", "iam:GetPolicyVersion"],
+      "Resource": "*"
+    }
+  ]
+}
