@@ -4,6 +4,9 @@ name: deploy
 # AWS access is keyless: the job assumes the sentinel-damian-gha role through GitHub OIDC.
 on:
   push:
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
 
 permissions:
   id-token: write # request the OIDC token

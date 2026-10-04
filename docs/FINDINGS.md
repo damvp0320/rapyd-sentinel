@@ -25,6 +25,11 @@ Add new findings at the bottom and keep numbering.
   - Creating and configuring an S3 state bucket, creating `eks-*` and `sentinel-*` roles, attaching AWS managed policies such as `AmazonEKSClusterPolicy`, and putting inline policies on our own roles all work.
   - This is what makes the whole design (IAM roles per cluster, OIDC deploy role) possible without bypassing any restriction.
 
+- **Finding 16 – `iam:GetRole` on service-linked roles is needed for EKS node groups** (activity 13)
+  - **What happened:** creating a managed node group failed with `Failed to validate if SLR: AWSServiceRoleForAmazonEKSNodegroup already exists due to missing permissions for 'iam:GetRole'`. EKS calls IAM as the caller to check its service-linked role.
+  - **Cause:** the CI role policy only allowed IAM actions on `eks-damian-*` / `sentinel-damian-*` roles.
+  - **Fix:** allow `iam:GetRole` on `arn:aws:iam::*:role/aws-service-role/*`. Real environment: same read permission, or pre-create the service-linked roles once per account.
+
 ## Environment surprises
 
 - **Finding 5 – the AWS account is shared with many other candidates** (activity 3)
@@ -69,3 +74,9 @@ Add new findings at the bottom and keep numbering.
 
 - **Finding 15 – static AWS keys are still in GitHub secrets** (activity 6)
   - They are used only by the manual bootstrap workflow; the deploy workflow uses OIDC. They expire with the challenge access, but at the end they should be deleted from the repository secrets and the bootstrap switched to OIDC as well. Mention in the README.
+
+- **Finding 17 – a failed apply is safe to resume** (activity 13)
+  - The first apply stopped at the node groups after creating 68 resources. State was saved in S3, so the next run planned only the 2 missing resources. Because the plan is a saved artifact per run, never re-run an old failed run (its plan is stale): push a new commit instead.
+
+- **Finding 18 – timing and cost to expect** (activity 13)
+  - Each EKS control plane takes about 9 minutes to create; the whole first apply is about 12 minutes before node groups. While deployed the main costs are 2 EKS control planes ($0.10/h each), 4 NAT gateways and 4 t3.medium nodes, so run `destroy` when finished.
