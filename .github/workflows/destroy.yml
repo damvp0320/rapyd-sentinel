@@ -18,7 +18,7 @@ concurrency:
 
 env:
   TF_IN_AUTOMATION: "true"
-  TF_DIR: terraform/envs/poc
+  TF_DIR: infra/envs/poc
 
 jobs:
   destroy:

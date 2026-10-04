@@ -50,7 +50,7 @@ Both VPCs have two public and two private subnets across two Availability Zones,
 
 ```
 .github/workflows/    CI and deployment pipelines (ci, deploy, bootstrap, destroy)
-terraform/
+infra/
   modules/
     network/          VPC, subnets, route tables, NAT and Internet Gateways
     peering/          VPC peering connection and cross-VPC routes
@@ -125,8 +125,8 @@ Or in the Actions tab: **destroy** > **Run workflow** > type `destroy`. It delet
 No AWS credentials needed. On macOS: `brew install hashicorp/tap/terraform terraform-linters/tap/tflint`.
 
 ```bash
-terraform fmt -check -recursive terraform
-cd terraform/envs/poc
+terraform fmt -check -recursive infra
+cd infra/envs/poc
 terraform init -backend=false
 terraform validate
 tflint --config ../../../.tflint.hcl

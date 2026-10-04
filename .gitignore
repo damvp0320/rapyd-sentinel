@@ -6,5 +6,5 @@ crash.log
 .terraform.lock.hcl.bak
 *.pem
 .env
-terraform/modules/**/.terraform.lock.hcl
+infra/modules/**/.terraform.lock.hcl
 rendered/
