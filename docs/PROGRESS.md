@@ -34,7 +34,7 @@ Mark items with `[x]` as they are completed.
 **Purpose:** Put the Terraform behind GitHub Actions: lint and validate on every push, plan on push, apply on main. The first successful apply proves both clusters and the VPC peering exist.
 
 - [x] 11. `ci.yml`: fmt, validate, tflint on every push
-- [ ] 12. `deploy.yml`: plan on push, apply on main
+- [x] 12. `deploy.yml`: plan on push, apply on main
 - [ ] 13. First apply via GitHub Actions; both clusters ACTIVE and peering working
 
 ## Day 2 – Workloads, validation, documentation
