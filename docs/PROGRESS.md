@@ -35,7 +35,7 @@ Mark items with `[x]` as they are completed.
 
 - [x] 11. `ci.yml`: fmt, validate, tflint on every push
 - [x] 12. `deploy.yml`: plan on push, apply on main
-- [ ] 13. First apply via GitHub Actions; both clusters ACTIVE and peering working
+- [x] 13. First apply via GitHub Actions; both clusters ACTIVE and peering working
 
 ## Day 2 – Workloads, validation, documentation
 
