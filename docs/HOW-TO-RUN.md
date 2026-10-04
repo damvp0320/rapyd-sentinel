@@ -1,114 +1,73 @@
 # How to clone and run the project
 
-This guide takes you from a fresh clone to a working deployment in your own AWS account. The infrastructure is created **only by GitHub Actions**. You never run `terraform apply` on your machine.
+This guide is for whoever reviews the project. **You do not need to change anything**: the AWS account, region, resource names, state bucket, deploy role and GitHub secrets are already set up. You only start the workflow and check the result.
 
-Expect about 15 to 20 minutes for the first deployment, and a running cost of roughly the following while it is up: 2 EKS control planes (about $0.10/hour each), 4 NAT Gateways (about $0.045/hour each plus data) and 4 `t3.medium` nodes. Destroy it when you are done (see the last step).
+Everything is created by GitHub Actions. Nobody runs `terraform apply` on a laptop.
 
-## 1. Prerequisites
+## What you need
 
-**Accounts and access**
+- Access to this GitHub repository with permission to run workflows (write access).
+- Nothing else for the pipeline itself: it signs in to AWS with a role through GitHub OIDC, using the repository's existing configuration.
+- Optional, only if you want to look at the clusters or run the checks locally: `git`, the `aws` CLI, `kubectl`, `terraform` (1.10 or newer) and `tflint`.
 
-- An AWS account and an IAM user (or role) with access keys that can create: an S3 bucket, IAM roles named `eks-*` and `sentinel-*` (with AWS managed policies attached), VPCs and related networking, EKS clusters, and load balancers.
-- A GitHub account where you can create a repository with Actions enabled.
-- The GitHub OIDC provider (`token.actions.githubusercontent.com`) must already exist in the AWS account. The bootstrap script only looks it up, it does not create it. If your account does not have it yet, create it once:
-
-  ```bash
-  aws iam create-open-id-connect-provider \
-    --url https://token.actions.githubusercontent.com \
-    --client-id-list sts.amazonaws.com
-  ```
-
-**Tools on your machine**
-
-| Tool | Needed for |
-|---|---|
-| `git` | cloning |
-| [`gh`](https://cli.github.com/) (GitHub CLI), logged in with `gh auth login` | creating the repo, secrets and variables, running workflows |
-| `aws` CLI | optional, to inspect the result |
-| `kubectl` | optional, to inspect the clusters |
-| `terraform` 1.10 or newer and `tflint` | optional, to run the checks locally |
-
-On macOS, Terraform is not in Homebrew core any more:
-
-```bash
-brew install hashicorp/tap/terraform
-brew install terraform-linters/tap/tflint
-```
-
-## 2. Clone and create your own repository
-
-The pipeline runs in the repository you push to, so work in your own copy:
+## 1. Clone
 
 ```bash
 git clone https://github.com/damvp0320/rapyd-sentinel.git
 cd rapyd-sentinel
-gh repo create rapyd-sentinel --private --source=. --remote=mine --push
 ```
 
-(The original repository is private, so you need access to it, or a copy of the code, to clone.)
+Cloning is only needed to read the code or run the local checks in step 6. The pipeline runs in GitHub.
 
-## 3. Adapt the account-specific names
+## 2. Run the pipeline
 
-Several names are global or tied to one account. Change these before the first run:
+Choose one:
 
-| What | Where | Why |
-|---|---|---|
-| `damian` in the IAM role names (`eks-damian-gateway`, `eks-damian-backend`) | `role_name_prefix` in [terraform/envs/poc/main.tf](../terraform/envs/poc/main.tf) | IAM role names are global in the account. Keep the `eks-` prefix. |
-| `damian` in the deploy role and state bucket (`sentinel-damian-gha-v2`, `sentinel-tfstate-damian-<account>`) | [scripts/bootstrap.sh](../scripts/bootstrap.sh) (`ROLE_NAME`, `STATE_BUCKET`) | Same reason. Keep the `sentinel-` prefix. |
-| `eks-damian-*` and `sentinel-damian-*` role patterns | [scripts/policies/gha-permissions.json](../scripts/policies/gha-permissions.json) | The deploy role may only manage roles that match these patterns. They must match the names above. |
-| Account ID and user in the admin ARNs | [terraform/envs/poc/terraform.tfvars](../terraform/envs/poc/terraform.tfvars) | These principals get cluster-admin on both clusters. Use your CI role ARN and your own IAM user. |
-| Region `eu-west-3` | `region` in [terraform/envs/poc/variables.tf](../terraform/envs/poc/variables.tf) and the `backend "s3"` block in [terraform/envs/poc/versions.tf](../terraform/envs/poc/versions.tf) | Change both together if you use another region. |
+**From the GitHub website**
 
-The gateway's NGINX config hardcodes the VPC DNS resolver `10.10.0.2` (the gateway VPC base address plus 2) in [k8s/gateway/configmap.yaml.tpl](../k8s/gateway/configmap.yaml.tpl). Change it only if you change `gateway_vpc_cidr`.
+1. Open the repository's **Actions** tab.
+2. Select the **deploy** workflow.
+3. Click **Run workflow**, keep the branch `main`, and confirm.
 
-Commit the changes to `main` of your repository.
-
-## 4. Configure GitHub
-
-The bootstrap workflow needs AWS access keys. Everything after it uses OIDC, with no long-lived keys.
+**From the command line** (GitHub CLI, logged in with `gh auth login`)
 
 ```bash
-gh secret set AWS_ACCESS_KEY_ID
-gh secret set AWS_SECRET_ACCESS_KEY
-gh variable set AWS_REGION --body "eu-west-3"
-```
-
-`gh secret set` prompts for the value, so the key does not end up in your shell history.
-
-## 5. Run the bootstrap (once)
-
-The bootstrap workflow creates the Terraform state bucket and the deploy role that the pipeline assumes through OIDC. It also prints PASS or DENIED for each permission it tests.
-
-```bash
-gh workflow run bootstrap.yml
+gh workflow run deploy.yml --ref main
 gh run watch
 ```
 
-At the end of the log it prints two values. Save them as repository variables:
+A push to `main` runs the same pipeline. Pushing to any other branch only runs the checks and a Terraform **plan**, it changes nothing in AWS.
 
-```bash
-gh variable set STATE_BUCKET --body "<value of STATE_BUCKET>"
-gh variable set AWS_ROLE_ARN --body "<value of ROLE_ARN>"
-```
+## 3. What happens
 
-If a step shows `DENIED`, your AWS user lacks that permission. [FINDINGS.md](FINDINGS.md) lists the limits we hit and the workarounds.
+The `deploy` workflow runs these jobs in order:
 
-## 6. Deploy
+| Job | What it does |
+|---|---|
+| `plan` | Signs in to AWS with OIDC, runs `terraform init`, `validate` and `plan`, and shows the plan in the job summary |
+| `apply` | Applies exactly that saved plan (two VPCs, VPC peering, two EKS clusters) |
+| `deploy-backend` | Validates and deploys the backend to `eks-backend`, then waits for its internal load balancer |
+| `deploy-gateway` | Fills in the backend address, validates and deploys the proxy to `eks-gateway`, then waits for the public load balancer |
+| `e2e-test` | Calls the public load balancer until it returns `Hello from backend`, then checks that the backend is not exposed |
 
-Pushing to a branch only runs checks and a Terraform **plan**. Pushing or merging to `main` runs the whole pipeline: plan, apply, deploy the backend, deploy the gateway, and the end-to-end test.
+The separate `ci` workflow runs on every push as well: `terraform fmt`, `validate`, `tflint` and `kubeconform`.
 
-```bash
-git push mine main
-gh run watch
-```
+**How long it takes**
 
-Documentation-only changes (`docs/**`, `*.md`) do not trigger a deployment.
+- If the infrastructure already exists (it may, from the author's last run), Terraform reports no changes and the whole run takes a few minutes.
+- To watch everything being created from nothing, run the **destroy** workflow first (step 5), then **deploy**. A full creation takes about 15 to 20 minutes, mostly the two EKS clusters.
 
-When the run is green, the job summary shows the public load balancer hostname and the results of the checks.
+## 4. Check the result
 
-## 7. Verify it works
+**In GitHub (nothing to install)**
 
-Get the public address of the gateway and call it:
+Open the finished run. A green run means every step passed, including the end-to-end test. The job summaries show:
+
+- the Terraform plan (`plan` job) and the outputs (`apply` job);
+- the backend internal load balancer and the public gateway load balancer addresses;
+- the `e2e-test` output: the request that returned `Hello from backend`, and six PASS lines for the exposure checks (backend load balancer internal, gateway load balancer internet-facing, no security group open to `0.0.0.0/0` in the backend VPC, backend allows only the gateway VPC `10.10.0.0/16`, no instance with a public IP, backend not reachable from the internet).
+
+**Yourself, from a terminal** (needs AWS CLI access to the account)
 
 ```bash
 aws eks update-kubeconfig --region eu-west-3 --name eks-gateway
@@ -122,45 +81,45 @@ Expected output:
 Hello from backend
 ```
 
-That response comes from a pod in the backend cluster, reached through the gateway. The pipeline performs this same request and the exposure checks automatically (the `e2e-test` job).
+That answer comes from a pod in the backend cluster, reached through the gateway proxy over the VPC peering link.
 
-You can also look at the pieces:
-
-```bash
-kubectl -n sentinel get deploy,pods,svc                 # gateway cluster
-aws eks update-kubeconfig --region eu-west-3 --name eks-backend
-kubectl -n sentinel get deploy,pods,svc                 # backend cluster
-```
-
-## 8. Optional: run the checks locally
-
-These need no AWS credentials:
-
-```bash
-terraform fmt -check -recursive terraform
-cd terraform/envs/poc && terraform init -backend=false && terraform validate
-tflint --config ../../../.tflint.hcl
-```
-
-The same checks run in GitHub on every push (`ci.yml`).
-
-## 9. Tear everything down
+## 5. Tear everything down
 
 ```bash
 gh workflow run destroy.yml -f confirm=destroy
 gh run watch
 ```
 
-The workflow first deletes the Kubernetes load balancers (otherwise they block the VPC deletion), then runs `terraform destroy`.
+Or in the Actions tab: **destroy** → **Run workflow** → type `destroy`. It deletes the Kubernetes load balancers first (they would block the VPC deletion) and then runs `terraform destroy`. Run **deploy** again afterwards to recreate everything.
 
-It does **not** remove what the bootstrap created: the state bucket and the deploy role. Delete those by hand when you no longer need them.
+The state bucket and the deploy role are created once by the bootstrap and are not removed by destroy.
+
+## 6. Optional: run the checks locally
+
+No AWS credentials needed:
+
+```bash
+terraform fmt -check -recursive terraform
+cd terraform/envs/poc
+terraform init -backend=false
+terraform validate
+tflint --config ../../../.tflint.hcl
+```
+
+On macOS, install the tools with `brew install hashicorp/tap/terraform terraform-linters/tap/tflint`.
+
+## Good to know
+
+- **It runs in this repository.** The AWS deploy role only trusts this repository, so a fork cannot sign in to AWS with it. This is intentional. Running the project from a copy would require creating a new role and changing the names; that is outside this guide.
+- **It needs the challenge AWS account.** The pipeline depends on that account and its role still existing. If the account has been closed or cleaned up, the `plan` job fails when signing in to AWS.
+- **Cost while running:** two EKS control planes, four NAT Gateways and four small nodes. Destroy it when you are done.
 
 ## Troubleshooting
 
 | Symptom | Cause and fix |
 |---|---|
-| `Not authorized to perform sts:AssumeRoleWithWebIdentity` | The role trust policy does not match your repository's OIDC subject. The bootstrap trusts both the plain and the immutable subject formats for the repository it runs in. If the trust policy is wrong and your user cannot edit it (`iam:UpdateAssumeRolePolicy`), create a new role name in `bootstrap.sh`. |
-| `AddressLimitExceeded` during apply | The account's Elastic IP quota is too low for 4 NAT Gateways. Request an increase, or reduce to one NAT Gateway per VPC in the `network` module. |
-| Node group fails with `missing permissions for 'iam:GetRole'` | The deploy role must be allowed `iam:GetRole` on `arn:aws:iam::*:role/aws-service-role/*`. This is already in [gha-permissions.json](../scripts/policies/gha-permissions.json). Re-run the bootstrap to refresh the role policy. |
-| `Saved plan is stale` | Never re-run an old failed run. Push a new commit so a fresh plan is created. |
-| Role name already exists | IAM role names are global. Change the `damian` segment (step 3). |
+| `plan` fails at "Configure AWS credentials" | The AWS role or account is not available any more (see "Good to know"). |
+| `apply` reports `AddressLimitExceeded` | The Elastic IP quota is too low for 4 NAT Gateways. Request an increase. |
+| `Saved plan is stale` on `apply` | Do not re-run an old failed run. Start a new **deploy** run so a fresh plan is created. |
+| `e2e-test` retries for several minutes | A new load balancer can take a few minutes to start answering. It retries for up to 10 minutes before failing. |
+| "Run workflow" button missing | You need write access to the repository. |
