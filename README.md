@@ -19,8 +19,9 @@ Each domain has its own network and its own Kubernetes cluster, and the two talk
 - [How networking is configured between VPCs and clusters](#how-networking-is-configured-between-vpcs-and-clusters)
 - [How the proxy reaches the backend](#how-the-proxy-reaches-the-backend)
 - [CI/CD pipeline overview](#cicd-pipeline-overview)
+- [Design decisions and trade-offs](#design-decisions-and-trade-offs)
 - [Trade-offs and limitations](#trade-offs-and-limitations)
-- [What I would improve or add next](#what-i-would-improve-or-add-next)
+- [What I would have improved or added next](#what-i-would-have-improved-or-added-next)
 - [Project documents](#project-documents)
 
 ## Architecture
@@ -224,22 +225,75 @@ Four GitHub Actions workflows in `.github/workflows/`:
 - **A running deploy is never cancelled** (stopping an apply halfway can leave infrastructure half built).
 - **State** is in an S3 bucket (versioned, encrypted) with S3-native locking.
 
+## Design decisions and trade-offs
+
+Each decision below says what I chose, what else I considered, why, and what the choice costs.
+
+**1. Two separate VPCs joined by VPC peering**
+- *Alternatives:* one VPC with separate subnets, AWS Transit Gateway, or PrivateLink.
+- *Why:* the task asks for two isolated domains. Peering is the simplest private link between exactly two VPCs, has no hourly fee and adds no extra hop.
+- *Trade-off:* peering is not transitive and does not scale to many VPCs, and the CIDRs can never overlap. PrivateLink would expose only the one backend service (stronger isolation) but needs more setup; Transit Gateway pays off only with more VPCs.
+
+**2. Network Load Balancers for both entry points**
+- *Alternative:* an Application Load Balancer for the public side.
+- *Why:* an NLB is created by EKS's built-in Service support using only the cluster IAM role. An ALB needs the AWS Load Balancer Controller and extra IAM roles, which the account restrictions made risky.
+- *Trade-off:* layer 4 only, so no path routing, no WAF and no TLS termination at the load balancer without further work.
+
+**3. An internal load balancer in front of the backend, reached by DNS name**
+- *Alternatives:* the proxy calling pod IPs or node ports directly, or a cross-cluster service-discovery layer.
+- *Why:* the load balancer is a stable address that does not change when pods are replaced, and `loadBalancerSourceRanges` lets Kubernetes restrict it to the gateway VPC.
+- *Trade-off:* one extra hop and one more load balancer to pay for.
+
+**4. The backend address is injected into the gateway at deploy time**
+- *Alternatives:* a Route 53 private hosted zone with a fixed name, or passing it through Terraform outputs.
+- *Why:* the internal load balancer's name only exists after the backend is deployed. The pipeline deploys the backend first and fills the name into templates with `envsubst`; this keeps Terraform independent of Kubernetes objects and makes the order explicit.
+- *Trade-off:* an ordering dependency, and a changed address needs a gateway redeploy (handled by a pod annotation that restarts the pods).
+
+**5. One NAT Gateway per Availability Zone**
+- *Alternative:* a single NAT Gateway per VPC.
+- *Why:* losing one AZ then does not cut outbound access of the other AZ, and the extra cost is small for a short-lived environment.
+- *Trade-off:* four NAT Gateways cost more than two, and four Elastic IPs count against the account quota.
+
+**6. Managed node groups on small instances, in private subnets only**
+- *Alternatives:* Fargate, Karpenter or EKS Auto Mode.
+- *Why:* simple and predictable, and it works with the NodePort-based load balancer integration. Private subnets and no public IPs satisfy "no public EC2 instances".
+- *Trade-off:* capacity is manual (two fixed nodes per cluster) and the nodes cost money even when idle.
+
+**7. Public and private Kubernetes API endpoint, access through EKS access entries**
+- *Alternative:* a private-only endpoint.
+- *Why:* GitHub-hosted runners are outside the VPC and need to reach the API to run `kubectl`. Access is still IAM-authenticated, and access entries replace the older `aws-auth` ConfigMap. Admins are listed explicitly so changing the identity that runs Terraform does not lock anyone out.
+- *Trade-off:* a larger attack surface than a private endpoint with self-hosted runners.
+
+**8. Small purpose-built Terraform modules**
+- *Alternative:* the community `terraform-aws-modules` for VPC and EKS.
+- *Why:* they create many extra resources (KMS keys, log groups, an OIDC provider) that the restricted permissions could block. Three small modules (`network`, `peering`, `eks`) with typed inputs and explicit outputs are easy to explain and to review.
+- *Trade-off:* fewer features than the community modules, and the maintenance is ours.
+
+**9. Keyless CI with a saved plan**
+- *Alternative:* long-lived AWS keys in GitHub secrets.
+- *Why:* the pipeline signs in with GitHub OIDC to a role scoped to this repository, and `apply` runs exactly the plan that `plan` produced. A running deploy is never cancelled, because stopping an apply halfway can leave infrastructure half built.
+- *Trade-off:* the one-time bootstrap still uses static keys, and the role is only as broad as the account's IAM restrictions allow.
+
+**10. Security enforced in layers and tested by the pipeline**
+- *Alternative:* relying on a single security group rule.
+- *Why:* the backend is restricted by a Terraform security group rule, by Kubernetes `loadBalancerSourceRanges` and by an internal-only load balancer, and the `e2e-test` job asserts the outcome on every run (see [CI/CD](#cicd-pipeline-overview)).
+- *Trade-off:* the rules live in two systems (Terraform and Kubernetes), so the checks assert the result (nothing open to `0.0.0.0/0`, only `10.10.0.0/16` allowed) and not an exact rule list.
+
+**11. State in S3 with native locking**
+- *Alternative:* S3 plus a DynamoDB lock table.
+- *Why:* fewer resources to create and permit. *Trade-off:* it requires Terraform 1.10 or newer, which the pipeline pins.
+
+**12. Plain Kubernetes manifests with a small template step**
+- *Alternative:* Helm or Kustomize.
+- *Why:* few moving parts, easy to read and review in a small project. *Trade-off:* less flexible once there are several environments.
+
 ## Trade-offs and limitations
 
-This section has three parts: the design **trade-offs** I chose on purpose, the **limitations** that come from the time limit, and the **permission limits** of the challenge account. The detailed log is in [docs/FINDINGS.md](docs/FINDINGS.md).
+This section covers the **limitations** that come from the time limit and the **permission limits** of the challenge account. The trade-offs of each deliberate decision are in the previous section. The detailed log is in [docs/FINDINGS.md](docs/FINDINGS.md).
 
-### Trade-offs (deliberate design choices)
+### Trade-offs
 
-| Choice | Why | What it costs |
-|---|---|---|
-| Kubernetes API endpoint is public and private | GitHub-hosted runners are outside the VPC and need it to run `kubectl`. It is IAM-authenticated. | Weaker than a private endpoint with self-hosted runners. |
-| One NAT Gateway per AZ (four in total) | Losing an AZ does not cut outbound access of the other. | Higher cost than one NAT Gateway per VPC. |
-| In-tree Kubernetes load balancer support instead of the AWS Load Balancer Controller | Works with the cluster IAM role only, no extra controller or IAM roles. Fits the restricted permissions. | Older and with fewer features (for example no ALB, no target type `ip`). |
-| VPC peering between the two VPCs | The simplest private link for exactly two VPCs. | Does not scale to many VPCs (no transitive routing). |
-| Bootstrap as a shell script, not Terraform | Avoids the chicken-and-egg of storing the bootstrap's own state, and doubles as a permission probe. | Not declarative. |
-| Plain manifests with `envsubst` templates instead of Helm or Kustomize | Few moving parts and easy to read for a small project. | Less flexible for several environments. |
-| Apply on every push to `main`, with no manual approval step | Fast feedback for a proof of concept. | No human gate before changing infrastructure. |
-| Explicit EKS admin access entries | The identity that runs Terraform is not the only admin, so switching from static keys to OIDC does not lock anyone out. | Admin principals must be listed in `terraform.tfvars`. |
+The deliberate design trade-offs (what each decision costs, and what the alternative was) are explained next to each decision in [Design decisions and trade-offs](#design-decisions-and-trade-offs) above.
 
 ### Limitations due to the time limit
 
@@ -263,7 +317,7 @@ Things that were left out or kept minimal because of the time available:
 | The account is shared and IAM role names are global | All names carry a `damian` segment to avoid collisions. Normally there is one account per environment. |
 | The repository uses GitHub's immutable OIDC subject claim | The first OIDC sign-in failed; the trust policy now accepts both subject formats for this repository only. |
 
-## What I would improve or add next
+## What I would have improved or added next
 
 - **TLS everywhere:** an ACM certificate and a TLS listener on the public load balancer, and encryption between gateway and backend.
 - **NetworkPolicy:** default-deny in both clusters, allowing only gateway to backend on the application port.
