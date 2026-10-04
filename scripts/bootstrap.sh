@@ -35,11 +35,18 @@ echo "== GitHub OIDC provider (shared account: reuse, do not create)"
 step "iam:GetOpenIDConnectProvider" aws iam get-open-id-connect-provider --open-id-connect-provider-arn "$OIDC_ARN"
 
 echo "== Deploy role: ${ROLE_NAME}"
+# GitHub can emit the plain subject ("repo:owner/name:...") or, when the repository uses immutable
+# subjects, the ID-based one ("repo:owner@ownerId/name@repoId:..."). Trust both, for this repo only.
+SUBJECTS="\"repo:${REPO}:*\""
+if [[ -n "${GITHUB_REPOSITORY_OWNER_ID:-}" && -n "${GITHUB_REPOSITORY_ID:-}" ]]; then
+  OWNER="${REPO%%/*}"; NAME="${REPO##*/}"
+  SUBJECTS="${SUBJECTS},\"repo:${OWNER}@${GITHUB_REPOSITORY_OWNER_ID}/${NAME}@${GITHUB_REPOSITORY_ID}:*\""
+fi
 TRUST="$(cat <<JSON
 {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Federated":"${OIDC_ARN}"},
 "Action":"sts:AssumeRoleWithWebIdentity",
 "Condition":{"StringEquals":{"token.actions.githubusercontent.com:aud":"sts.amazonaws.com"},
-"StringLike":{"token.actions.githubusercontent.com:sub":"repo:${REPO}:*"}}}]}
+"StringLike":{"token.actions.githubusercontent.com:sub":[${SUBJECTS}]}}}]}
 JSON
 )"
 if aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
