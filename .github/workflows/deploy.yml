@@ -1,12 +1,14 @@
 name: deploy
 
 # Plan on every push; apply only on main, using exactly the plan that was reviewed in the plan job.
-# AWS access is keyless: the job assumes the sentinel-damian-gha role through GitHub OIDC.
+# AWS access is keyless: the job assumes the sentinel-damian-gha-v2 role through GitHub OIDC.
 on:
   push:
     paths-ignore:
       - 'docs/**'
       - '*.md'
+  # Manual run from the Actions tab (on main it also applies and deploys), no commit needed.
+  workflow_dispatch:
 
 permissions:
   id-token: write # request the OIDC token
