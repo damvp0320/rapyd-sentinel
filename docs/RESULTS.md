@@ -11,7 +11,7 @@ Same structure as `PROGRESS.md`. Each completed activity records what actually h
 - [x] 1. Request AWS credentials from maxh@rapyd.net and note the 72h deadline
   - **RESULT:** Credentials received (IAM user `damian.vegapolanco2@gmail.com`, account `721500739616`, region `eu-west-3`). They expire about 2 days after issue, so the deadline drives the schedule.
 - [x] 2. Install terraform and tflint (`brew install terraform tflint`)
-  - **RESULT:** Marked done locally. CI does not depend on the laptop: `ci.yml` installs its own Terraform 1.10.5 and tflint on the runner.
+  - **RESULT:** Terraform and tflint were not actually installed at the start. Installed on 2026-10-04 via Homebrew (`hashicorp/tap/terraform` 1.16.4, because plain `brew install terraform` no longer finds it, and the `terraform-linters/tap/tflint` cask 0.64.0). CI installs its own copies on the runner.
 - [x] 3. Run read-only permission probes (region, S3, OIDC provider, `eks-*` / `sentinel-*` roles, managed policy attachment) and record every denial
   - **RESULT:** Account is shared with many other candidates (about 25 state buckets, hundreds of IAM roles). eu-west-3 is clean: no EKS clusters, only the default VPC `172.31.0.0/16`, no Elastic IPs in use, AZs a/b/c available. The GitHub OIDC provider already exists, so it is reused, not created. IAM role names are global and heavily used, so ours carry a `damian` suffix. One DENIED: `servicequotas:GetServiceQuota`, so the Elastic IP quota could not be read (risk for 4 NAT gateways; fallback is 1 NAT per VPC).
 
@@ -32,8 +32,8 @@ Same structure as `PROGRESS.md`. Each completed activity records what actually h
 ### Stage 3: Terraform modules
 **Purpose:** Write the reusable Terraform building blocks: `network`, `peering` and `eks` as separate modules with clear inputs and outputs, plus the `envs/poc` root that wires two VPCs, the peering link and two clusters together. Nothing is applied yet.
 
-- [ ] 7. `network` module: VPC, 2 public + 2 private subnets, IGW, 1 NAT per AZ, private route table per AZ, EKS subnet tags
-  - **RESULT:** pending
+- [x] 7. `network` module: VPC, 2 public + 2 private subnets, IGW, 1 NAT per AZ, private route table per AZ, EKS subnet tags
+  - **RESULT:** Module in `terraform/modules/network`. Inputs: name, cidr_block, azs, public/private subnet CIDRs (one per AZ, validated), cluster_name, tags. Creates the VPC, IGW, one public and one private subnet per AZ, one EIP + NAT Gateway per AZ, a shared public route table, and one private route table per AZ defaulting to the NAT in the same AZ. Subnets carry the `kubernetes.io/role/elb`, `internal-elb` and `cluster/<name>` tags. No instances and no auto-assigned public IPs. Outputs: vpc_id, vpc_cidr_block, public/private subnet IDs, private_route_table_ids (consumed by the peering module), nat_gateway_ids, nat_public_ips. `fmt`, `validate` and `tflint` pass locally and in CI (provider resolved to aws 6.67.0).
 - [ ] 8. `peering` module: peering connection and cross-VPC routes in both private route tables
   - **RESULT:** pending
 - [ ] 9. `eks` module: cluster, `eks-*` roles, managed node group in private subnets, access entries, SG rules
