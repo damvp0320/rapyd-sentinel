@@ -43,7 +43,7 @@ Mark items with `[x]` as they are completed.
 ### Stage 5: Kubernetes workloads
 **Purpose:** Define what runs on the clusters: the internal backend service behind an internal NLB, and the NGINX proxy behind a public NLB that forwards to the backend over the peering link. Deploy order is backend first, then gateway.
 
-- [ ] 14. Backend manifests: Deployment ("Hello from backend") + internal NLB Service with `loadBalancerSourceRanges: 10.10.0.0/16`
+- [x] 14. Backend manifests: Deployment ("Hello from backend") + internal NLB Service with `loadBalancerSourceRanges: 10.10.0.0/16`
 - [ ] 15. Gateway manifests: NGINX Deployment + ConfigMap (backend NLB hostname via `envsubst`) + public NLB Service
 - [ ] 16. Deploy jobs in order: backend, wait for NLB hostname, gateway, wait for public hostname
 

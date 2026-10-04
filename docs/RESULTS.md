@@ -62,8 +62,8 @@ Same structure as `PROGRESS.md`. Each completed activity records what actually h
 ### Stage 5: Kubernetes workloads
 **Purpose:** Define what runs on the clusters: the internal backend service behind an internal NLB, and the NGINX proxy behind a public NLB that forwards to the backend over the peering link. Deploy order is backend first, then gateway.
 
-- [ ] 14. Backend manifests: Deployment ("Hello from backend") + internal NLB Service with `loadBalancerSourceRanges: 10.10.0.0/16`
-  - **RESULT:** pending
+- [x] 14. Backend manifests: Deployment ("Hello from backend") + internal NLB Service with `loadBalancerSourceRanges: 10.10.0.0/16`
+  - **RESULT:** Manifests in `k8s/backend/`: `namespace.yaml` (`sentinel`), `configmap.yaml` (nginx config answering `Hello from backend` on `/` and `ok` on `/healthz`), `deployment.yaml` (2 replicas spread across zones with a topology spread constraint, readiness and liveness probes, resource requests and limits, official nginx 1.27-alpine pulled from ECR Public to avoid Docker Hub rate limits) and `service.yaml` (type LoadBalancer with `aws-load-balancer-type: nlb` and `aws-load-balancer-internal: "true"`, so the NLB only has private IPs in the backend private subnets, plus `loadBalancerSourceRanges: 10.10.0.0/16`, which Kubernetes writes into the node security group). Nothing is exposed to the internet. Validated with `kubectl apply --dry-run=client --validate=strict` against the live eks-backend API (Kubernetes v1.35.8); a server-side dry-run of namespaced objects only fails because the namespace does not exist yet, which the pipeline creates first. Confirmed both backend nodes are Ready with private IPs (10.20.11.x and 10.20.12.x). Not applied yet: deployment is activity 16.
 - [ ] 15. Gateway manifests: NGINX Deployment + ConfigMap (backend NLB hostname via `envsubst`) + public NLB Service
   - **RESULT:** pending
 - [ ] 16. Deploy jobs in order: backend, wait for NLB hostname, gateway, wait for public hostname
