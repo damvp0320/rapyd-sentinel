@@ -53,7 +53,8 @@ TRUST="$(cat <<JSON
 JSON
 )"
 if aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
-  step "iam:UpdateAssumeRolePolicy" aws iam update-assume-role-policy --role-name "$ROLE_NAME" --policy-document "$TRUST"
+  # iam:UpdateAssumeRolePolicy is denied for this user, so an existing role keeps its trust policy.
+  echo "EXISTS  ${ROLE_NAME} (trust policy unchanged; only the inline permissions policy is refreshed)"
 else
   step "iam:CreateRole (${ROLE_NAME})" aws iam create-role --role-name "$ROLE_NAME" --assume-role-policy-document "$TRUST"
 fi
