@@ -226,9 +226,34 @@ Four GitHub Actions workflows in `.github/workflows/`:
 
 ## Trade-offs and limitations
 
-These come from the time limit and from the restricted AWS permissions of the challenge account. The detailed log is in [docs/FINDINGS.md](docs/FINDINGS.md).
+This section has three parts: the design **trade-offs** I chose on purpose, the **limitations** that come from the time limit, and the **permission limits** of the challenge account. The detailed log is in [docs/FINDINGS.md](docs/FINDINGS.md).
 
-**Permission limits hit (documented, not bypassed)**
+### Trade-offs (deliberate design choices)
+
+| Choice | Why | What it costs |
+|---|---|---|
+| Kubernetes API endpoint is public and private | GitHub-hosted runners are outside the VPC and need it to run `kubectl`. It is IAM-authenticated. | Weaker than a private endpoint with self-hosted runners. |
+| One NAT Gateway per AZ (four in total) | Losing an AZ does not cut outbound access of the other. | Higher cost than one NAT Gateway per VPC. |
+| In-tree Kubernetes load balancer support instead of the AWS Load Balancer Controller | Works with the cluster IAM role only, no extra controller or IAM roles. Fits the restricted permissions. | Older and with fewer features (for example no ALB, no target type `ip`). |
+| VPC peering between the two VPCs | The simplest private link for exactly two VPCs. | Does not scale to many VPCs (no transitive routing). |
+| Bootstrap as a shell script, not Terraform | Avoids the chicken-and-egg of storing the bootstrap's own state, and doubles as a permission probe. | Not declarative. |
+| Plain manifests with `envsubst` templates instead of Helm or Kustomize | Few moving parts and easy to read for a small project. | Less flexible for several environments. |
+| Apply on every push to `main`, with no manual approval step | Fast feedback for a proof of concept. | No human gate before changing infrastructure. |
+| Explicit EKS admin access entries | The identity that runs Terraform is not the only admin, so switching from static keys to OIDC does not lock anyone out. | Admin principals must be listed in `terraform.tfvars`. |
+
+### Limitations due to the time limit
+
+Things that were left out or kept minimal because of the time available:
+
+- **HTTP only.** No TLS between the client and the gateway, or between the gateway and the backend.
+- **No NetworkPolicy, service mesh or observability.** Isolation relies on the VPC, routes and security groups; there are no dashboards, centralised logs or alerts.
+- **Minimal application.** The backend and the proxy are stock NGINX images with default security settings (running as root), two fixed replicas each, no autoscaling and no pod disruption budgets.
+- **Single environment.** One `poc` environment and one Terraform state; no staging or production.
+- **Static AWS keys remain as repository secrets.** Only the one-time bootstrap workflow uses them; the deploy pipeline uses OIDC. Moving the bootstrap to OIDC as well was not done.
+- **Limited linting and testing.** The AWS-specific tflint rules are not enabled (they download a plugin at run time), and `kubeconform` validates against the Kubernetes 1.31 schemas while the clusters run 1.35; the server-side dry run covers the real API. There are no unit tests or policy checks, only the end-to-end test and the exposure checks.
+- **Simplified diagram.** No resource IDs, load balancers drawn as single icons, no legend.
+
+### Permission limits of the challenge account (documented, not bypassed)
 
 | Limit | Effect and what a real environment would do |
 |---|---|
@@ -237,20 +262,6 @@ These come from the time limit and from the restricted AWS permissions of the ch
 | `iam:DeleteRolePolicy` is denied | The superseded role could not be removed and remains unused. An administrator would delete it. |
 | The account is shared and IAM role names are global | All names carry a `damian` segment to avoid collisions. Normally there is one account per environment. |
 | The repository uses GitHub's immutable OIDC subject claim | The first OIDC sign-in failed; the trust policy now accepts both subject formats for this repository only. |
-
-**Design trade-offs**
-
-- **Kubernetes API endpoint is public (and private).** GitHub-hosted runners are outside the VPC and need it to run `kubectl`. It is IAM-authenticated, but a private endpoint with self-hosted runners would be stronger.
-- **HTTP only.** There is no TLS between the client and the gateway, or between the gateway and the backend.
-- **Four NAT Gateways.** One per AZ gives resilience, at a higher cost than one per VPC.
-- **In-tree load balancer support, not the AWS Load Balancer Controller.** Simple and permission-friendly, but older and with fewer features (for example no ALB).
-- **VPC peering.** Fine for two VPCs, but it does not scale to many (no transitive routing).
-- **Bootstrap is a shell script, not Terraform.** It avoids the chicken-and-egg of storing the bootstrap's own state, but it is not declarative. The static AWS keys used by the bootstrap are still stored as repository secrets.
-- **Apply on every push to `main`, without a manual approval step.** Acceptable for a PoC.
-- **Minimal application.** The backend and the proxy are stock NGINX images running with default security settings (as root, no resource autoscaling), with two fixed replicas each.
-- **Single environment** (`poc`) and a single Terraform state.
-- **Linting depth.** The AWS-specific tflint rules are not enabled (they download a plugin at run time), and `kubeconform` validates against the Kubernetes 1.31 schemas while the clusters run 1.35; the server-side dry run covers the real API.
-- **The diagram is simplified:** no resource IDs, load balancers drawn as single icons, no legend.
 
 ## What I would improve or add next
 
