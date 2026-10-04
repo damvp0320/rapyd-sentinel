@@ -1,0 +1,24 @@
+# Internal-only entry point of the backend. The NLB gets private IPs in the backend private subnets,
+# so it is reachable from the gateway VPC over the peering connection and never from the internet.
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: sentinel
+  labels:
+    app.kubernetes.io/name: backend
+    app.kubernetes.io/part-of: rapyd-sentinel
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-internal: "true"
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: backend
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+  # Kubernetes writes these CIDRs into the node security group: only the gateway VPC may connect.
+  loadBalancerSourceRanges:
+    - 10.10.0.0/16
