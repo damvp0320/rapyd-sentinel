@@ -87,8 +87,8 @@ Same structure as `PROGRESS.md`. Each completed activity records what actually h
 ### Stage 7: Documentation and wrap-up
 **Purpose:** Finish the deliverables: final architecture diagram, an honest README (how to run, networking, trade-offs, next steps), the destroy workflow and a clean final run before submitting.
 
-- [x] 20. Final architecture diagram saved to `docs/assets/architecture.png`
-  - **RESULT:** The diagram is generated from code, not drawn or produced by an image model: `docs/diagrams/architecture.py` (Python `diagrams` library + Graphviz, AWS and Kubernetes icons) renders `docs/assets/architecture.png`. Reason: AI image generators repeatedly got arrows wrong (an arrow ending at a pod instead of the internal NLB, arrows pointing into NAT gateways, wrong region text), whereas in code every box and arrow is declared explicitly and I could render and inspect the output myself. It shows both VPCs with their CIDRs, public and private subnets per AZ, 2 NAT gateways and an Internet Gateway per VPC, the public NLB and the internal NLB, both EKS clusters with 2 pods each, the VPC peering, the numbered request path 1 to 4 (the path into the backend ends at the internal NLB), outbound-only egress from the NATs, and a red dashed arrow that stops at the backend VPC border. Region shown is eu-west-3 (the earlier hand-made image said us-east-1). The level of detail is intentionally low (no resource IDs), so it stays correct after a rebuild. To regenerate: `brew install graphviz && pip install diagrams && python docs/diagrams/architecture.py`.
+- [ ] 20. Final architecture diagram saved to `docs/assets/architecture.png`
+  - **RESULT:** pending. A code-generated version was produced and rejected; the diagram will be done another way.
 - [ ] 21. README: how to run, networking, proxy-to-backend flow, CI/CD overview, permission limits hit, trade-offs, next steps
   - **RESULT:** pending
 - [ ] 22. Manual-only `destroy.yml`, final clean run from a fresh push, then submit
