@@ -50,6 +50,7 @@ docs/                 Project log: progress, results and findings
 
 ## Project documents
 
+- [docs/HOW-TO-RUN.md](docs/HOW-TO-RUN.md): how to clone the repository and run the project in your own AWS account.
 - [docs/PROGRESS.md](docs/PROGRESS.md): the checklist of stages and activities.
 - [docs/RESULTS.md](docs/RESULTS.md): what happened in each activity, with a summary per stage.
 - [docs/FINDINGS.md](docs/FINDINGS.md): permission limits, surprises and design decisions found along the way.
