@@ -1,6 +1,6 @@
 # Rapyd Sentinel – Results
 
-Same structure as `PROGRESS.md`. Each completed activity records what actually happened. Pending activities stay `RESULT: pending`.
+Same structure as `PROGRESS.md`. Each completed activity records what actually happened, and each stage ends with a summary. Pending activities stay `RESULT: pending`.
 
 ## Day 1 – Infrastructure working through CI
 
@@ -12,6 +12,7 @@ Same structure as `PROGRESS.md`. Each completed activity records what actually h
 - [x] 3. Run read-only permission probes (region, S3, OIDC provider, `eks-*` / `sentinel-*` roles, managed policy attachment) and record every denial
   - **RESULT:** Account is shared with many other candidates (about 25 state buckets, hundreds of IAM roles). eu-west-3 is clean: no EKS clusters, only the default VPC `172.31.0.0/16`, no Elastic IPs in use, AZs a/b/c available. The GitHub OIDC provider already exists, so it is reused, not created. IAM role names are global and heavily used, so ours carry a `damian` suffix. One DENIED: `servicequotas:GetServiceQuota`, so the Elastic IP quota could not be read (risk for 4 NAT gateways; fallback is 1 NAT per VPC).
 
+> **Stage 1 summary:** Credentials work and the account was mapped. It is shared with many candidates, so every global name (IAM roles, state bucket) needs a `damian` suffix. eu-west-3 is empty (no clusters, only the default VPC), the GitHub OIDC provider already exists and will be reused. The only denial found was `servicequotas:GetServiceQuota`, which leaves the Elastic IP quota unchecked.
 ### Stage 2: Bootstrap
 - [x] 4. Create the S3 state bucket via a one-off workflow (not from the laptop)
   - **RESULT:** PASS via the bootstrap workflow (run 37167733098): bucket `sentinel-tfstate-damian-721500739616` created with versioning, AES256 encryption and public access block. Done by CI, not from the laptop.
@@ -20,6 +21,7 @@ Same structure as `PROGRESS.md`. Each completed activity records what actually h
 - [x] 6. Add GitHub repo secrets/variables (region, role ARN, state bucket)
   - **RESULT:** Repo secrets `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and variables `AWS_REGION`, `STATE_BUCKET`, `AWS_ROLE_ARN` set. Static keys are used for bootstrap; the deploy workflow will switch to OIDC (`AWS_ROLE_ARN`).
 
+> **Stage 2 summary:** Everything was created from CI, not the laptop. The state bucket (versioned, encrypted, private) and the OIDC deploy role `sentinel-damian-gha` exist, and creating `eks-*` roles with managed policies is confirmed to work. Repo secrets and variables are set. No IAM or S3 blocks were hit, so the OIDC bonus is feasible once the deploy workflow is written.
 ### Stage 3: Terraform modules
 - [ ] 7. `network` module: VPC, 2 public + 2 private subnets, IGW, 1 NAT, route tables, EKS subnet tags
   - **RESULT:** pending
@@ -30,6 +32,7 @@ Same structure as `PROGRESS.md`. Each completed activity records what actually h
 - [ ] 10. `envs/poc` root module wiring 2x network, peering, 2x eks, with outputs
   - **RESULT:** pending
 
+> **Stage 3 summary:** pending
 ### Stage 4: Pipeline and first apply
 - [ ] 11. `ci.yml`: fmt, validate, tflint on every push
   - **RESULT:** pending
@@ -38,6 +41,7 @@ Same structure as `PROGRESS.md`. Each completed activity records what actually h
 - [ ] 13. First apply via GitHub Actions; both clusters ACTIVE and peering working
   - **RESULT:** pending
 
+> **Stage 4 summary:** pending
 ## Day 2 – Workloads, validation, documentation
 
 ### Stage 5: Kubernetes workloads
@@ -48,6 +52,7 @@ Same structure as `PROGRESS.md`. Each completed activity records what actually h
 - [ ] 16. Deploy jobs in order: backend, wait for NLB hostname, gateway, wait for public hostname
   - **RESULT:** pending
 
+> **Stage 5 summary:** pending
 ### Stage 6: Validation and bonuses
 - [ ] 17. End-to-end test: `curl` the public NLB with retries returns "Hello from backend"
   - **RESULT:** pending
@@ -56,6 +61,7 @@ Same structure as `PROGRESS.md`. Each completed activity records what actually h
 - [ ] 19. Verify backend restriction (SG rule on backend nodes allows only 10.10.0.0/16) and capture evidence (CI log/screenshot)
   - **RESULT:** pending
 
+> **Stage 6 summary:** pending
 ### Stage 7: Documentation and wrap-up
 - [ ] 20. Final architecture diagram saved to `docs/assets/architecture.png`
   - **RESULT:** pending
@@ -63,3 +69,5 @@ Same structure as `PROGRESS.md`. Each completed activity records what actually h
   - **RESULT:** pending
 - [ ] 22. Manual-only `destroy.yml`, final clean run from a fresh push, then submit
   - **RESULT:** pending
+
+> **Stage 7 summary:** pending
