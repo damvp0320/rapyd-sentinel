@@ -1,0 +1,20 @@
+# Public entry point of Sentinel. The NLB is internet-facing and lives in the public subnets of vpc-gateway;
+# the NGINX pods stay in the private subnets.
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway
+  namespace: sentinel
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: rapyd-sentinel
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: gateway
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
