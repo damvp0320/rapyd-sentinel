@@ -80,3 +80,15 @@ Add new findings at the bottom and keep numbering.
 
 - **Finding 18 – timing and cost to expect** (activity 13)
   - Each EKS control plane takes about 9 minutes to create; the whole first apply is about 12 minutes before node groups. While deployed the main costs are 2 EKS control planes ($0.10/h each), 4 NAT gateways and 4 t3.medium nodes, so run `destroy` when finished.
+
+- **Finding 19 – the in-tree load balancer support is enough, no AWS Load Balancer Controller needed** (activities 14, 15, 17)
+  - On EKS 1.35 a `Service` of type `LoadBalancer` with `aws-load-balancer-type: nlb` (and `aws-load-balancer-internal: "true"` for the backend) creates the NLBs using the cluster IAM role only. This avoided creating IRSA/Pod Identity roles and custom policies, which the scoped IAM permissions might have blocked. Trade-off: the in-tree provider is legacy and has fewer features than the controller (no target-type `ip`, no ALB, fewer annotations). Next step for production: AWS Load Balancer Controller.
+
+- **Finding 20 – the security group restriction is enforced in two places** (activity 19)
+  - Terraform adds an explicit NodePort rule for `10.10.0.0/16`; Kubernetes independently writes `kubernetes.io/rule/nlb/client=...` from `loadBalancerSourceRanges`. NLB health-check rules (from the backend's own private subnets) are also managed by Kubernetes, so the backend SG is not 100% Terraform-owned. The exposure check asserts the outcome (no `0.0.0.0/0`, client rule is only `10.10.0.0/16`) instead of the exact rule list, so it survives Kubernetes rewriting rules.
+
+- **Finding 21 – small gotchas hit while building the checks** (activities 18, 19)
+  - A server-side `kubectl --dry-run=server` of namespaced objects fails with `namespaces "sentinel" not found` until the namespace exists, so the namespace is applied first.
+  - JMESPath `starts_with()` errors on security group rules with no description (null); the filter needs `Description!=\`null\` &&` first.
+  - kubeconform is pinned to Kubernetes schema 1.31.0 because published schemas for the newest minor versions lag behind; the objects used (Namespace, ConfigMap, Deployment, Service) are stable across versions, and the server-side dry-run covers the real 1.35 API.
+  - `kubectl` and `envsubst` are preinstalled on GitHub's `ubuntu-latest` runner, so no setup steps were needed.

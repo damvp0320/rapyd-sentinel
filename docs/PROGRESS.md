@@ -51,9 +51,9 @@ Mark items with `[x]` as they are completed.
 ### Stage 6: Validation and bonuses
 **Purpose:** Prove the system works and is restricted as designed: end-to-end curl through the public NLB, manifest and Terraform checks in the pipeline, and evidence that only the gateway VPC can reach the backend.
 
-- [ ] 17. End-to-end test: `curl` the public NLB with retries returns "Hello from backend"
-- [ ] 18. Manifest validation (`kubectl apply --dry-run=server`) and tflint wired into the pipeline
-- [ ] 19. Verify backend restriction (SG rule on backend nodes allows only 10.10.0.0/16) and capture evidence (CI log/screenshot)
+- [x] 17. End-to-end test: `curl` the public NLB with retries returns "Hello from backend"
+- [x] 18. Manifest validation (`kubectl apply --dry-run=server`) and tflint wired into the pipeline
+- [x] 19. Verify backend restriction (SG rule on backend nodes allows only 10.10.0.0/16) and capture evidence (CI log/screenshot)
 
 
 ### Stage 7: Documentation and wrap-up
