@@ -27,7 +27,7 @@ Mark items with `[x]` as they are completed.
 - [x] 7. `network` module: VPC, 2 public + 2 private subnets, IGW, 1 NAT per AZ, private route table per AZ, EKS subnet tags
 - [x] 8. `peering` module: peering connection and cross-VPC routes in both private route tables
 - [x] 9. `eks` module: cluster, `eks-*` roles, managed node group in private subnets, access entries, SG rules
-- [ ] 10. `envs/poc` root module wiring 2x network, peering, 2x eks, with outputs
+- [x] 10. `envs/poc` root module wiring 2x network, peering, 2x eks, with outputs
 
 
 ### Stage 4: Pipeline and first apply
