@@ -22,7 +22,7 @@ concurrency:
 env:
   TF_IN_AUTOMATION: "true"
   TF_VERSION: 1.10.5
-  TF_DIR: terraform/envs/poc
+  TF_DIR: infra/envs/poc
   BACKEND_CLUSTER: eks-backend
   GATEWAY_CLUSTER: eks-gateway
 

@@ -25,11 +25,11 @@ jobs:
       - uses: terraform-linters/setup-tflint@v4
 
       - name: terraform fmt
-        run: terraform fmt -check -recursive -diff terraform
+        run: terraform fmt -check -recursive -diff infra
 
       - name: terraform validate (every module and root)
         run: |
-          for d in $(find terraform -name '*.tf' -exec dirname {} \; | sort -u); do
+          for d in $(find infra -name '*.tf' -exec dirname {} \; | sort -u); do
             echo "::group::validate $d"
             terraform -chdir="$d" init -backend=false -input=false
             terraform -chdir="$d" validate
@@ -38,7 +38,7 @@ jobs:
 
       - name: tflint (recommended preset, see .tflint.hcl)
         run: |
-          for d in $(find terraform -name '*.tf' -exec dirname {} \; | sort -u); do
+          for d in $(find infra -name '*.tf' -exec dirname {} \; | sort -u); do
             echo "::group::tflint $d"
             tflint --config "$GITHUB_WORKSPACE/.tflint.hcl" --chdir="$d"
             echo "::endgroup::"
