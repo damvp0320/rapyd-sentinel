@@ -45,7 +45,7 @@ Mark items with `[x]` as they are completed.
 
 - [x] 14. Backend manifests: Deployment ("Hello from backend") + internal NLB Service with `loadBalancerSourceRanges: 10.10.0.0/16`
 - [x] 15. Gateway manifests: NGINX Deployment + ConfigMap (backend NLB hostname via `envsubst`) + public NLB Service
-- [ ] 16. Deploy jobs in order: backend, wait for NLB hostname, gateway, wait for public hostname
+- [x] 16. Deploy jobs in order: backend, wait for NLB hostname, gateway, wait for public hostname
 
 
 ### Stage 6: Validation and bonuses
