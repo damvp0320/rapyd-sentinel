@@ -4,6 +4,7 @@ Same structure as `PROGRESS.md`. Each completed activity records what actually h
 
 ## Day 1 – Infrastructure working through CI
 
+
 ### Stage 1: Setup and permission discovery
 **Purpose:** Find out what we are allowed to do before designing anything. Get the credentials, map the shared AWS account, and record every permission limit so the design and the README rest on facts.
 
@@ -15,6 +16,7 @@ Same structure as `PROGRESS.md`. Each completed activity records what actually h
   - **RESULT:** Account is shared with many other candidates (about 25 state buckets, hundreds of IAM roles). eu-west-3 is clean: no EKS clusters, only the default VPC `172.31.0.0/16`, no Elastic IPs in use, AZs a/b/c available. The GitHub OIDC provider already exists, so it is reused, not created. IAM role names are global and heavily used, so ours carry a `damian` suffix. One DENIED: `servicequotas:GetServiceQuota`, so the Elastic IP quota could not be read (risk for 4 NAT gateways; fallback is 1 NAT per VPC).
 
 > **Stage 1 summary:** Credentials work and the account was mapped. It is shared with many candidates, so every global name (IAM roles, state bucket) needs a `damian` suffix. eu-west-3 is empty (no clusters, only the default VPC), the GitHub OIDC provider already exists and will be reused. The only denial found was `servicequotas:GetServiceQuota`, which leaves the Elastic IP quota unchecked.
+
 ### Stage 2: Bootstrap
 **Purpose:** Create the minimum foundations that Terraform and the pipeline need before any infrastructure exists: a remote state bucket, a deploy identity (OIDC role) and the GitHub secrets and variables, all created from CI.
 
@@ -26,10 +28,11 @@ Same structure as `PROGRESS.md`. Each completed activity records what actually h
   - **RESULT:** Repo secrets `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and variables `AWS_REGION`, `STATE_BUCKET`, `AWS_ROLE_ARN` set. Static keys are used for bootstrap; the deploy workflow will switch to OIDC (`AWS_ROLE_ARN`).
 
 > **Stage 2 summary:** Everything was created from CI, not the laptop. The state bucket (versioned, encrypted, private) and the OIDC deploy role `sentinel-damian-gha` exist, and creating `eks-*` roles with managed policies is confirmed to work. Repo secrets and variables are set. No IAM or S3 blocks were hit, so the OIDC bonus is feasible once the deploy workflow is written.
+
 ### Stage 3: Terraform modules
 **Purpose:** Write the reusable Terraform building blocks: `network`, `peering` and `eks` as separate modules with clear inputs and outputs, plus the `envs/poc` root that wires two VPCs, the peering link and two clusters together. Nothing is applied yet.
 
-- [ ] 7. `network` module: VPC, 2 public + 2 private subnets, IGW, 1 NAT, route tables, EKS subnet tags
+- [ ] 7. `network` module: VPC, 2 public + 2 private subnets, IGW, 1 NAT per AZ, private route table per AZ, EKS subnet tags
   - **RESULT:** pending
 - [ ] 8. `peering` module: peering connection and cross-VPC routes in both private route tables
   - **RESULT:** pending
@@ -39,6 +42,7 @@ Same structure as `PROGRESS.md`. Each completed activity records what actually h
   - **RESULT:** pending
 
 > **Stage 3 summary:** pending
+
 ### Stage 4: Pipeline and first apply
 **Purpose:** Put the Terraform behind GitHub Actions: lint and validate on every push, plan on push, apply on main. The first successful apply proves both clusters and the VPC peering exist.
 
@@ -52,6 +56,7 @@ Same structure as `PROGRESS.md`. Each completed activity records what actually h
 > **Stage 4 summary:** pending
 ## Day 2 – Workloads, validation, documentation
 
+
 ### Stage 5: Kubernetes workloads
 **Purpose:** Define what runs on the clusters: the internal backend service behind an internal NLB, and the NGINX proxy behind a public NLB that forwards to the backend over the peering link. Deploy order is backend first, then gateway.
 
@@ -63,6 +68,7 @@ Same structure as `PROGRESS.md`. Each completed activity records what actually h
   - **RESULT:** pending
 
 > **Stage 5 summary:** pending
+
 ### Stage 6: Validation and bonuses
 **Purpose:** Prove the system works and is restricted as designed: end-to-end curl through the public NLB, manifest and Terraform checks in the pipeline, and evidence that only the gateway VPC can reach the backend.
 
@@ -74,6 +80,7 @@ Same structure as `PROGRESS.md`. Each completed activity records what actually h
   - **RESULT:** pending
 
 > **Stage 6 summary:** pending
+
 ### Stage 7: Documentation and wrap-up
 **Purpose:** Finish the deliverables: final architecture diagram, an honest README (how to run, networking, trade-offs, next steps), the destroy workflow and a clean final run before submitting.
 
