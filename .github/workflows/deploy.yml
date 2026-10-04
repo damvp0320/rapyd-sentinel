@@ -121,9 +121,13 @@ jobs:
       - name: Configure kubectl for eks-backend
         run: aws eks update-kubeconfig --name "$BACKEND_CLUSTER"
 
-      - name: Deploy backend
+      - name: Validate backend manifests (server-side dry run)
         run: |
           kubectl apply -f k8s/backend/namespace.yaml
+          kubectl apply --dry-run=server -f k8s/backend/
+
+      - name: Deploy backend
+        run: |
           kubectl apply -f k8s/backend/
           kubectl -n sentinel rollout status deployment/backend --timeout=300s
 
@@ -158,9 +162,13 @@ jobs:
       - name: Render manifests with the backend NLB hostname
         run: ./scripts/render-gateway.sh "${{ needs.deploy-backend.outputs.backend_host }}" rendered/gateway
 
-      - name: Deploy gateway
+      - name: Validate gateway manifests (server-side dry run)
         run: |
           kubectl apply -f rendered/gateway/namespace.yaml
+          kubectl apply --dry-run=server -f rendered/gateway/
+
+      - name: Deploy gateway
+        run: |
           kubectl apply -f rendered/gateway/
           kubectl -n sentinel rollout status deployment/gateway --timeout=300s
 
@@ -175,3 +183,44 @@ jobs:
           test -n "$host" || { echo "gateway NLB hostname not assigned"; exit 1; }
           echo "host=$host" >> "$GITHUB_OUTPUT"
           echo "### Public gateway NLB: \`$host\`" >> "$GITHUB_STEP_SUMMARY"
+
+  # -------------------------------------------------------------------------
+  # Proof that the whole chain works and that the backend is private.
+  # -------------------------------------------------------------------------
+  e2e-test:
+    needs: [deploy-backend, deploy-gateway]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      # A new NLB can take a few minutes to start serving, so retry for up to 10 minutes.
+      - name: Request through the public gateway reaches the backend
+        env:
+          GATEWAY_HOST: ${{ needs.deploy-gateway.outputs.gateway_host }}
+        run: |
+          for i in $(seq 1 40); do
+            body=$(curl -s -m 10 "http://$GATEWAY_HOST/" || true)
+            echo "attempt $i: '${body}'"
+            [ "$body" = "Hello from backend" ] && break
+            sleep 15
+          done
+          [ "$body" = "Hello from backend" ] || { echo "gateway did not return the backend response"; exit 1; }
+          {
+            echo '### End-to-end test'
+            echo "\`curl http://$GATEWAY_HOST/\` returned \`$body\` (client, public NLB, NGINX, VPC peering, internal NLB, backend pod)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Backend is private (exposure checks)
+        run: |
+          {
+            echo '### Exposure checks'
+            echo '```'
+            ./scripts/verify-exposure.sh "${{ needs.deploy-backend.outputs.backend_host }}"
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          ./scripts/verify-exposure.sh "${{ needs.deploy-backend.outputs.backend_host }}" > /dev/null
