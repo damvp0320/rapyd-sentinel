@@ -7,12 +7,12 @@ Mark items with `[x]` as they are completed.
 ### Stage 1: Setup and permission discovery
 - [x] 1. Request AWS credentials from maxh@rapyd.net and note the 72h deadline
 - [x] 2. Install terraform and tflint (`brew install terraform tflint`)
-- [ ] 3. Run read-only permission probes (region, S3, OIDC provider, `eks-*` / `sentinel-*` roles, managed policy attachment) and record every denial
+- [x] 3. Run read-only permission probes (region, S3, OIDC provider, `eks-*` / `sentinel-*` roles, managed policy attachment) and record every denial
 
 ### Stage 2: Bootstrap
-- [ ] 4. Create the S3 state bucket via a one-off workflow (not from the laptop)
-- [ ] 5. Create the GitHub OIDC provider and `sentinel-github-actions` role, or fall back to secrets and document the block
-- [ ] 6. Add GitHub repo secrets/variables (region, role ARN, state bucket)
+- [x] 4. Create the S3 state bucket via a one-off workflow (not from the laptop)
+- [x] 5. Create the GitHub OIDC provider and `sentinel-github-actions` role, or fall back to secrets and document the block
+- [x] 6. Add GitHub repo secrets/variables (region, role ARN, state bucket)
 
 ### Stage 3: Terraform modules
 - [ ] 7. `network` module: VPC, 2 public + 2 private subnets, IGW, 1 NAT, route tables, EKS subnet tags
