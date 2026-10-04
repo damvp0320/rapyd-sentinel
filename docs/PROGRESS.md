@@ -59,6 +59,6 @@ Mark items with `[x]` as they are completed.
 ### Stage 7: Documentation and wrap-up
 **Purpose:** Finish the deliverables: final architecture diagram, an honest README (how to run, networking, trade-offs, next steps), the destroy workflow and a clean final run before submitting.
 
-- [ ] 20. Final architecture diagram saved to `docs/assets/architecture.png`
+- [x] 20. Final architecture diagram saved to `docs/assets/architecture.png`
 - [ ] 21. README: how to run, networking, proxy-to-backend flow, CI/CD overview, permission limits hit, trade-offs, next steps
 - [ ] 22. Manual-only `destroy.yml`, final clean run from a fresh push, then submit
