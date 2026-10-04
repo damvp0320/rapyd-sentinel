@@ -34,8 +34,8 @@ Same structure as `PROGRESS.md`. Each completed activity records what actually h
 
 - [x] 7. `network` module: VPC, 2 public + 2 private subnets, IGW, 1 NAT per AZ, private route table per AZ, EKS subnet tags
   - **RESULT:** Module in `terraform/modules/network`. Inputs: name, cidr_block, azs, public/private subnet CIDRs (one per AZ, validated), cluster_name, tags. Creates the VPC, IGW, one public and one private subnet per AZ, one EIP + NAT Gateway per AZ, a shared public route table, and one private route table per AZ defaulting to the NAT in the same AZ. Subnets carry the `kubernetes.io/role/elb`, `internal-elb` and `cluster/<name>` tags. No instances and no auto-assigned public IPs. Outputs: vpc_id, vpc_cidr_block, public/private subnet IDs, private_route_table_ids (consumed by the peering module), nat_gateway_ids, nat_public_ips. `fmt`, `validate` and `tflint` pass locally and in CI (provider resolved to aws 6.67.0).
-- [ ] 8. `peering` module: peering connection and cross-VPC routes in both private route tables
-  - **RESULT:** pending
+- [x] 8. `peering` module: peering connection and cross-VPC routes in both private route tables
+  - **RESULT:** Module in `terraform/modules/peering`. Inputs: requester/accepter VPC ID, CIDR and list of private route table IDs, plus name and tags. Creates one `aws_vpc_peering_connection` (same account and region, so `auto_accept = true`) and one route per private route table in each direction (`10.20.0.0/16` in the gateway tables, `10.10.0.0/16` in the backend tables), so with two AZs per VPC that is 4 routes. Public route tables are deliberately untouched. Security groups are left to the EKS module so each cluster owns its own rules. Outputs: `peering_connection_id` and `peering_status`. `fmt`, `validate` and `tflint` pass locally.
 - [ ] 9. `eks` module: cluster, `eks-*` roles, managed node group in private subnets, access entries, SG rules
   - **RESULT:** pending
 - [ ] 10. `envs/poc` root module wiring 2x network, peering, 2x eks, with outputs

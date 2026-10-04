@@ -25,7 +25,7 @@ Mark items with `[x]` as they are completed.
 **Purpose:** Write the reusable Terraform building blocks: `network`, `peering` and `eks` as separate modules with clear inputs and outputs, plus the `envs/poc` root that wires two VPCs, the peering link and two clusters together. Nothing is applied yet.
 
 - [x] 7. `network` module: VPC, 2 public + 2 private subnets, IGW, 1 NAT per AZ, private route table per AZ, EKS subnet tags
-- [ ] 8. `peering` module: peering connection and cross-VPC routes in both private route tables
+- [x] 8. `peering` module: peering connection and cross-VPC routes in both private route tables
 - [ ] 9. `eks` module: cluster, `eks-*` roles, managed node group in private subnets, access entries, SG rules
 - [ ] 10. `envs/poc` root module wiring 2x network, peering, 2x eks, with outputs
 
