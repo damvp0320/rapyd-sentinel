@@ -4,4 +4,4 @@ Rapyd Sentinel is our flagship threat intelligence platform.
 
 ## Architecture
 
-_Architecture diagram: to be added._
+![Rapyd Sentinel architecture](docs/assets/architecture.png)
