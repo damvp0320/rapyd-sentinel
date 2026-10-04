@@ -7,3 +7,4 @@ crash.log
 *.pem
 .env
 terraform/modules/**/.terraform.lock.hcl
+rendered/

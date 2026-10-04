@@ -43,3 +43,22 @@ jobs:
             tflint --config "$GITHUB_WORKSPACE/.tflint.hcl" --chdir="$d"
             echo "::endgroup::"
           done
+
+  # Static validation of the Kubernetes manifests, no cluster needed.
+  # (deploy.yml additionally runs kubectl apply --dry-run=server against the real clusters.)
+  k8s-manifests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kubeconform
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz | tar xz
+          sudo mv kubeconform /usr/local/bin/
+
+      - name: Render gateway templates with a placeholder backend host
+        run: ./scripts/render-gateway.sh backend.example.internal rendered/gateway
+
+      - name: kubeconform (strict)
+        run: |
+          kubeconform -strict -summary -kubernetes-version 1.31.0 k8s/backend rendered/gateway
