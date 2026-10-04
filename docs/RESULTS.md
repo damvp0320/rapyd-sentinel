@@ -46,8 +46,8 @@ Same structure as `PROGRESS.md`. Each completed activity records what actually h
 ### Stage 4: Pipeline and first apply
 **Purpose:** Put the Terraform behind GitHub Actions: lint and validate on every push, plan on push, apply on main. The first successful apply proves both clusters and the VPC peering exist.
 
-- [ ] 11. `ci.yml`: fmt, validate, tflint on every push
-  - **RESULT:** pending
+- [x] 11. `ci.yml`: fmt, validate, tflint on every push
+  - **RESULT:** `.github/workflows/ci.yml` runs on every push and pull request with no AWS credentials: `terraform fmt -check -recursive`, then `terraform init -backend=false` + `validate` for each of the 4 Terraform directories (3 modules and `envs/poc`, auto-discovered with `find`, so new modules are covered without editing the workflow), then `tflint` per directory with the `recommended` preset from `.tflint.hcl`. Terraform pinned to 1.10.5 (the minimum for S3-native locking). Superseded runs on the same ref are cancelled. The same checks pass locally. The AWS tflint ruleset is not enabled because it downloads a plugin from GitHub at runtime; noted as a possible improvement.
 - [ ] 12. `deploy.yml`: plan on push, apply on main
   - **RESULT:** pending
 - [ ] 13. First apply via GitHub Actions; both clusters ACTIVE and peering working
