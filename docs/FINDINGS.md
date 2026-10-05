@@ -92,3 +92,12 @@ Add new findings at the bottom and keep numbering.
   - JMESPath `starts_with()` errors on security group rules with no description (null); the filter needs `Description!=\`null\` &&` first.
   - kubeconform is pinned to Kubernetes schema 1.31.0 because published schemas for the newest minor versions lag behind; the objects used (Namespace, ConfigMap, Deployment, Service) are stable across versions, and the server-side dry-run covers the real 1.35 API.
   - `kubectl` and `envsubst` are preinstalled on GitHub's `ubuntu-latest` runner, so no setup steps were needed.
+
+- **Finding 22 – the first request through a brand-new load balancer fails for about 2 minutes** (activity 22)
+  - After a from-scratch deploy the Kubernetes rollout and the load balancer hostname are ready well before the NLB targets are registered and healthy. The first 8 attempts of the end-to-end test (about 2 minutes) returned empty responses, and attempt 9 succeeded. Without a retry loop the pipeline would fail on a healthy system. The test retries for up to 10 minutes.
+
+- **Finding 23 – a docs-only path filter also ignores an empty commit** (activity 22)
+  - `deploy.yml` ignores pushes that only touch `docs/**` or `*.md`. An empty commit has no changed files, so it was treated as ignorable and did not start `deploy` (only `ci` ran). To start a deployment without a code change, use the manual trigger (`workflow_dispatch`).
+
+- **Finding 24 – cost and time of a full cycle** (activity 22)
+  - Measured: destroy about 7 minutes, deploy from nothing about 14 minutes (EKS control planes 7 to 9 minutes each, node groups about 2 minutes each, NAT Gateways about 2 minutes). While running, the cost is dominated by two EKS control planes, four NAT Gateways and four `t3.medium` nodes, so the environment should be destroyed when it is not being reviewed.
