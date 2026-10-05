@@ -1,9 +1,15 @@
 name: bootstrap
 
-# One-off, manually triggered. Creates the state bucket and the OIDC deploy role,
+# One-off, manually triggered. Creates the state bucket and the three OIDC roles (read, apply, deploy),
 # and reports which IAM/S3 permissions are available (documented in the README).
+# It is the only workflow that uses the static AWS keys stored as repository secrets.
 on:
   workflow_dispatch:
+    inputs:
+      neutralize_old_roles:
+        description: "Replace the permissions of the superseded single deploy roles with a deny-all policy"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -16,7 +22,8 @@ jobs:
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_REGION: ${{ vars.AWS_REGION }}
       AWS_DEFAULT_REGION: ${{ vars.AWS_REGION }}
+      NEUTRALIZE_OLD_ROLES: ${{ inputs.neutralize_old_roles }}
     steps:
       - uses: actions/checkout@v4
-      - name: Bootstrap state bucket and deploy role
+      - name: Bootstrap state bucket and OIDC roles
         run: ./scripts/bootstrap.sh

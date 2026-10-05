@@ -1,7 +1,10 @@
 name: deploy
 
 # Plan on every push; apply only on main, using exactly the plan that was reviewed in the plan job.
-# AWS access is keyless: the job assumes the sentinel-damian-gha-v2 role through GitHub OIDC.
+# AWS access is keyless (GitHub OIDC) and each stage uses its own least-privilege role:
+#   plan, e2e-test   sentinel-damian-gha-read    read-only, any branch
+#   apply            sentinel-damian-gha-apply   write, only from the "production" environment (main)
+#   deploy-*         sentinel-damian-gha-deploy  describe cluster + Kubernetes admin, only from "production" (main)
 on:
   push:
     paths-ignore:
@@ -38,7 +41,7 @@ jobs:
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          role-to-assume: ${{ vars.AWS_ROLE_READ_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
       - name: Who am I
@@ -72,6 +75,7 @@ jobs:
     needs: plan
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    environment: production
     steps:
       - uses: actions/checkout@v4
 
@@ -81,7 +85,7 @@ jobs:
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          role-to-assume: ${{ vars.AWS_ROLE_APPLY_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
       - uses: actions/download-artifact@v4
@@ -110,6 +114,7 @@ jobs:
   deploy-backend:
     needs: apply
     runs-on: ubuntu-latest
+    environment: production
     outputs:
       backend_host: ${{ steps.lb.outputs.host }}
     steps:
@@ -117,7 +122,7 @@ jobs:
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          role-to-assume: ${{ vars.AWS_ROLE_DEPLOY_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
       - name: Configure kubectl for eks-backend
@@ -148,6 +153,7 @@ jobs:
   deploy-gateway:
     needs: deploy-backend
     runs-on: ubuntu-latest
+    environment: production
     outputs:
       gateway_host: ${{ steps.lb.outputs.host }}
     steps:
@@ -155,7 +161,7 @@ jobs:
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          role-to-assume: ${{ vars.AWS_ROLE_DEPLOY_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
       - name: Configure kubectl for eks-gateway
@@ -197,7 +203,7 @@ jobs:
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          role-to-assume: ${{ vars.AWS_ROLE_READ_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
       # A new NLB can take a few minutes to start serving, so retry for up to 10 minutes.
