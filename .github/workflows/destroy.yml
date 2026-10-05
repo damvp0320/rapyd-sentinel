@@ -1,6 +1,8 @@
 name: destroy
 
 # Manual teardown of everything created by deploy.yml. Type "destroy" in the confirm input to run it.
+# Two stages with their own roles: load balancer cleanup (deploy role) and terraform destroy (apply role).
+# Both only work from the "production" environment, which is limited to the main branch.
 on:
   workflow_dispatch:
     inputs:
@@ -21,19 +23,14 @@ env:
   TF_DIR: infra/envs/poc
 
 jobs:
-  destroy:
+  cleanup-load-balancers:
     if: inputs.confirm == 'destroy'
     runs-on: ubuntu-latest
+    environment: production
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: 1.10.5
-
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          role-to-assume: ${{ vars.AWS_ROLE_DEPLOY_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
       # Load balancers created by Kubernetes Services live outside Terraform. If they are left behind
@@ -53,6 +50,22 @@ jobs:
             fi
           done
           sleep 60 # let AWS finish removing the load balancer ENIs
+
+  destroy:
+    needs: cleanup-load-balancers
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.10.5
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_APPLY_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
 
       - name: terraform init
         run: terraform -chdir="$TF_DIR" init -input=false -backend-config="bucket=${{ vars.STATE_BUCKET }}"

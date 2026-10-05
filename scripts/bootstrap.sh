@@ -1,22 +1,63 @@
 #!/usr/bin/env bash
-# Idempotent bootstrap: creates the Terraform state bucket and the GitHub OIDC deploy role.
-# Runs from CI (bootstrap.yml). Every step reports PASS/DENIED so permission limits are documented.
+# Idempotent bootstrap: creates the Terraform state bucket and the three GitHub OIDC roles, one per stage.
+# Runs from CI (bootstrap.yml) with the temporary static keys. Every step reports PASS/DENIED so permission
+# limits are documented.
+#
+#   sentinel-damian-gha-read    plan + verify  read-only; trusted from any branch or pull request of this repository
+#   sentinel-damian-gha-apply   apply + destroy  write; trusted only from the "production" environment (main only)
+#   sentinel-damian-gha-deploy  kubectl deploys  describe cluster only; trusted only from the "production" environment
 set -uo pipefail
 
 REGION="${AWS_REGION:-eu-west-3}"
 REPO="${GITHUB_REPOSITORY:-damvp0320/rapyd-sentinel}"
 ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
 STATE_BUCKET="sentinel-tfstate-damian-${ACCOUNT_ID}"
-# The scoped IAM user can create roles but NOT update a trust policy (iam:UpdateAssumeRolePolicy is denied),
-# so a trust policy fix means a new role name. v1 trusted only the plain GitHub subject format.
-ROLE_NAME="sentinel-damian-gha-v2"
-OLD_ROLE_NAME="sentinel-damian-gha"
 OIDC_ARN="arn:aws:iam::${ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com"
 DIR="$(cd "$(dirname "$0")" && pwd)"
+
+READ_ROLE="sentinel-damian-gha-read"
+APPLY_ROLE="sentinel-damian-gha-apply"
+DEPLOY_ROLE="sentinel-damian-gha-deploy"
+OLD_ROLES=("sentinel-damian-gha-v2" "sentinel-damian-gha")
 
 step() { # step "<label>" cmd...
   local label="$1"; shift
   if out="$("$@" 2>&1)"; then echo "PASS    $label"; else echo "DENIED  $label"; echo "        ${out//$'\n'/$'\n        '}"; return 1; fi
+}
+
+render() { # render <policy file>: fill in the placeholders
+  sed -e "s/__STATE_BUCKET__/${STATE_BUCKET}/g" -e "s/__ACCOUNT_ID__/${ACCOUNT_ID}/g" -e "s/__REGION__/${REGION}/g" "$DIR/policies/$1"
+}
+
+# GitHub can emit the plain subject ("repo:owner/name:...") or, when the repository uses immutable
+# subjects, the ID-based one ("repo:owner@ownerId/name@repoId:..."). Trust both, for this repository only.
+OWNER="${REPO%%/*}"; NAME="${REPO##*/}"
+subjects() { # subjects <suffix>  ->  JSON list of subject patterns ending in <suffix>
+  local out="\"repo:${REPO}:$1\""
+  if [[ -n "${GITHUB_REPOSITORY_OWNER_ID:-}" && -n "${GITHUB_REPOSITORY_ID:-}" ]]; then
+    out="${out},\"repo:${OWNER}@${GITHUB_REPOSITORY_OWNER_ID}/${NAME}@${GITHUB_REPOSITORY_ID}:$1\""
+  fi
+  echo "$out"
+}
+trust() { # trust <suffix>
+  cat <<JSON
+{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Federated":"${OIDC_ARN}"},
+"Action":"sts:AssumeRoleWithWebIdentity",
+"Condition":{"StringEquals":{"token.actions.githubusercontent.com:aud":"sts.amazonaws.com"},
+"StringLike":{"token.actions.githubusercontent.com:sub":[$(subjects "$1")]}}}]}
+JSON
+}
+
+ensure_role() { # ensure_role <role> <trust suffix> <policy file> <policy name>
+  local role="$1" suffix="$2" file="$3" pname="$4"
+  echo "== Role: ${role}"
+  if aws iam get-role --role-name "$role" >/dev/null 2>&1; then
+    # iam:UpdateAssumeRolePolicy is denied for this user, so an existing role keeps its trust policy.
+    echo "EXISTS  ${role} (trust policy unchanged; only the inline permissions policy is refreshed)"
+  else
+    step "iam:CreateRole (${role})" aws iam create-role --role-name "$role" --assume-role-policy-document "$(trust "$suffix")"
+  fi
+  step "iam:PutRolePolicy (${pname})" aws iam put-role-policy --role-name "$role" --policy-name "$pname" --policy-document "$(render "$file")"
 }
 
 echo "== Identity"; aws sts get-caller-identity
@@ -37,35 +78,18 @@ step "s3:PutPublicAccessBlock" aws s3api put-public-access-block --bucket "$STAT
 echo "== GitHub OIDC provider (shared account: reuse, do not create)"
 step "iam:GetOpenIDConnectProvider" aws iam get-open-id-connect-provider --open-id-connect-provider-arn "$OIDC_ARN"
 
-echo "== Deploy role: ${ROLE_NAME}"
-# GitHub can emit the plain subject ("repo:owner/name:...") or, when the repository uses immutable
-# subjects, the ID-based one ("repo:owner@ownerId/name@repoId:..."). Trust both, for this repo only.
-SUBJECTS="\"repo:${REPO}:*\""
-if [[ -n "${GITHUB_REPOSITORY_OWNER_ID:-}" && -n "${GITHUB_REPOSITORY_ID:-}" ]]; then
-  OWNER="${REPO%%/*}"; NAME="${REPO##*/}"
-  SUBJECTS="${SUBJECTS},\"repo:${OWNER}@${GITHUB_REPOSITORY_OWNER_ID}/${NAME}@${GITHUB_REPOSITORY_ID}:*\""
-fi
-TRUST="$(cat <<JSON
-{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Federated":"${OIDC_ARN}"},
-"Action":"sts:AssumeRoleWithWebIdentity",
-"Condition":{"StringEquals":{"token.actions.githubusercontent.com:aud":"sts.amazonaws.com"},
-"StringLike":{"token.actions.githubusercontent.com:sub":[${SUBJECTS}]}}}]}
-JSON
-)"
-if aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
-  # iam:UpdateAssumeRolePolicy is denied for this user, so an existing role keeps its trust policy.
-  echo "EXISTS  ${ROLE_NAME} (trust policy unchanged; only the inline permissions policy is refreshed)"
-else
-  step "iam:CreateRole (${ROLE_NAME})" aws iam create-role --role-name "$ROLE_NAME" --assume-role-policy-document "$TRUST"
-fi
-POLICY="$(sed -e "s/__STATE_BUCKET__/${STATE_BUCKET}/g" -e "s/__ACCOUNT_ID__/${ACCOUNT_ID}/g" -e "s/__REGION__/${REGION}/g" "$DIR/policies/gha-permissions.json")"
-step "iam:PutRolePolicy (inline deploy policy)" aws iam put-role-policy --role-name "$ROLE_NAME" \
-  --policy-name sentinel-damian-deploy --policy-document "$POLICY"
+ensure_role "$READ_ROLE"   "*"                       read.json   sentinel-damian-read
+ensure_role "$APPLY_ROLE"  "environment:production"  apply.json  sentinel-damian-apply
+ensure_role "$DEPLOY_ROLE" "environment:production"  deploy.json sentinel-damian-deploy
 
-echo "== Cleanup of superseded role ${OLD_ROLE_NAME} (best effort)"
-if aws iam get-role --role-name "$OLD_ROLE_NAME" >/dev/null 2>&1; then
-  step "iam:DeleteRolePolicy (${OLD_ROLE_NAME})" aws iam delete-role-policy --role-name "$OLD_ROLE_NAME" --policy-name sentinel-damian-deploy \
-    && step "iam:DeleteRole (${OLD_ROLE_NAME})" aws iam delete-role --role-name "$OLD_ROLE_NAME"
+if [[ "${NEUTRALIZE_OLD_ROLES:-false}" == "true" ]]; then
+  echo "== Neutralize the superseded single-role setup (roles cannot be deleted with this user's permissions)"
+  DENY_ALL='{"Version":"2012-10-17","Statement":[{"Effect":"Deny","Action":"*","Resource":"*"}]}'
+  for r in "${OLD_ROLES[@]}"; do
+    if aws iam get-role --role-name "$r" >/dev/null 2>&1; then
+      step "iam:PutRolePolicy deny-all (${r})" aws iam put-role-policy --role-name "$r" --policy-name sentinel-damian-deploy --policy-document "$DENY_ALL"
+    fi
+  done
 fi
 
 echo "== Can we create eks-* roles and attach managed policies? (create + delete throwaway role)"
@@ -80,4 +104,6 @@ fi
 
 echo
 echo "STATE_BUCKET=${STATE_BUCKET}"
-echo "ROLE_ARN=arn:aws:iam::${ACCOUNT_ID}:role/${ROLE_NAME}"
+echo "ROLE_READ_ARN=arn:aws:iam::${ACCOUNT_ID}:role/${READ_ROLE}"
+echo "ROLE_APPLY_ARN=arn:aws:iam::${ACCOUNT_ID}:role/${APPLY_ROLE}"
+echo "ROLE_DEPLOY_ARN=arn:aws:iam::${ACCOUNT_ID}:role/${DEPLOY_ROLE}"

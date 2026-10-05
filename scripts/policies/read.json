@@ -1,0 +1,93 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "Ec2NetworkRead",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeAccountAttributes",
+        "ec2:DescribeAddresses",
+        "ec2:DescribeAddressesAttribute",
+        "ec2:DescribeAvailabilityZones",
+        "ec2:DescribeInstances",
+        "ec2:DescribeInternetGateways",
+        "ec2:DescribeNatGateways",
+        "ec2:DescribeNetworkAcls",
+        "ec2:DescribeNetworkInterfaces",
+        "ec2:DescribeRouteTables",
+        "ec2:DescribeSecurityGroupRules",
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeSubnets",
+        "ec2:DescribeTags",
+        "ec2:DescribeVpcAttribute",
+        "ec2:DescribeVpcPeeringConnections",
+        "ec2:DescribeVpcs"
+      ],
+      "Resource": "*",
+      "Condition": { "StringEquals": { "aws:RequestedRegion": "__REGION__" } }
+    },
+    {
+      "Sid": "ElbRead",
+      "Effect": "Allow",
+      "Action": ["elasticloadbalancing:DescribeLoadBalancers"],
+      "Resource": "*",
+      "Condition": { "StringEquals": { "aws:RequestedRegion": "__REGION__" } }
+    },
+    {
+      "Sid": "EksRead",
+      "Effect": "Allow",
+      "Action": [
+        "eks:DescribeAccessEntry",
+        "eks:DescribeCluster",
+        "eks:DescribeNodegroup",
+        "eks:DescribeUpdate",
+        "eks:ListAssociatedAccessPolicies",
+        "eks:ListNodegroups",
+        "eks:ListTagsForResource",
+        "eks:ListUpdates"
+      ],
+      "Resource": [
+        "arn:aws:eks:__REGION__:__ACCOUNT_ID__:cluster/eks-*",
+        "arn:aws:eks:__REGION__:__ACCOUNT_ID__:nodegroup/eks-*/*",
+        "arn:aws:eks:__REGION__:__ACCOUNT_ID__:access-entry/eks-*/*"
+      ]
+    },
+    {
+      "Sid": "EksGlobalRead",
+      "Effect": "Allow",
+      "Action": ["eks:ListClusters", "eks:DescribeClusterVersions", "eks:DescribeAddonVersions"],
+      "Resource": "*",
+      "Condition": { "StringEquals": { "aws:RequestedRegion": "__REGION__" } }
+    },
+    {
+      "Sid": "IamReadClusterRoles",
+      "Effect": "Allow",
+      "Action": [
+        "iam:GetRole",
+        "iam:ListAttachedRolePolicies",
+        "iam:ListInstanceProfilesForRole",
+        "iam:ListRolePolicies",
+        "iam:ListRoleTags"
+      ],
+      "Resource": "arn:aws:iam::__ACCOUNT_ID__:role/eks-damian-*"
+    },
+    {
+      "Sid": "StateBucketList",
+      "Effect": "Allow",
+      "Action": ["s3:ListBucket"],
+      "Resource": "arn:aws:s3:::__STATE_BUCKET__"
+    },
+    {
+      "Sid": "StateRead",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject"],
+      "Resource": "arn:aws:s3:::__STATE_BUCKET__/*"
+    },
+    {
+      "Sid": "StateLockFileOnly",
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:DeleteObject"],
+      "Resource": "arn:aws:s3:::__STATE_BUCKET__/*.tflock"
+    }
+  ]
+}
