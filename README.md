@@ -23,11 +23,10 @@ Each domain has its own network and its own Kubernetes cluster, and the two talk
 - [Design decisions and trade-offs](#design-decisions-and-trade-offs)
 - [Trade-offs and limitations](#trade-offs-and-limitations)
 - [What I would have improved or added next](#what-i-would-have-improved-or-added-next)
-- [Project documents](#project-documents)
 
 ## Architecture
 
-![Rapyd Sentinel architecture](docs/assets/architecture.png)
+![Rapyd Sentinel architecture](assets/architecture.png)
 
 ## What gets built
 
@@ -61,7 +60,7 @@ k8s/
   backend/            Backend manifests
   gateway/            Gateway manifests (templates filled in at deploy time)
 scripts/              Bootstrap, manifest rendering and exposure checks
-docs/                 Project log: progress, results and findings
+assets/               Images used in this README
 ```
 
 Each Terraform module has typed, validated inputs and explicit outputs (`variables.tf`, `outputs.tf`). `envs/poc` is the only place where the modules are connected: the network module outputs (VPC IDs, subnet IDs, private route table IDs) feed the peering and EKS modules.
@@ -239,7 +238,7 @@ Four GitHub Actions workflows in `.github/workflows/`:
 
 The `deploy` pipeline ends with an automated end-to-end test, so every run is its own proof. This screenshot is the `e2e-test` job of the run that rebuilt the whole environment from an empty AWS account ([open the run](https://github.com/damvp0320/rapyd-sentinel/actions/runs/37265072667)): all five jobs are green, the job signed in to AWS with OIDC, and the request through the public gateway load balancer returned `Hello from backend`, a response produced by a pod in the other VPC.
 
-![End-to-end test in GitHub Actions](docs/assets/evidence-e2e-test.png)
+![End-to-end test in GitHub Actions](assets/evidence-e2e-test.png)
 
 The first nine attempts are empty on purpose: right after a rebuild a brand-new load balancer needs about two minutes before it starts answering, and the test retries (for up to 10 minutes) instead of failing on a healthy system. The step that follows in the same job runs `scripts/verify-exposure.sh`, which checks that the backend is internal and not reachable from the internet. A repeat run against the existing environment passes on the first attempt.
 
@@ -308,7 +307,7 @@ Each decision below says what I chose, what else I considered, why, and what the
 
 ## Trade-offs and limitations
 
-This section covers the **limitations** that come from the time limit and the **permission limits** of the challenge account. The trade-offs of each deliberate decision are in the previous section. The detailed log is in [docs/FINDINGS.md](docs/FINDINGS.md).
+This section covers the **limitations** that come from the time limit and the **permission limits** of the challenge account. The trade-offs of each deliberate decision are in the previous section.
 
 ### Trade-offs
 
@@ -349,9 +348,3 @@ Things that were left out or kept minimal because of the time available:
 - **Scaling and cost:** horizontal pod autoscaling and Karpenter, spot nodes for non-critical workloads, and a single NAT Gateway in non-production environments.
 - **Bootstrap and structure:** manage the state bucket and deploy role in a separate Terraform stack, add `staging`/`prod` environments, and move to Transit Gateway or PrivateLink if more VPCs are added.
 - **Testing:** Terraform tests (`terraform test`), policy checks (for example Checkov or OPA) and smoke tests after each deployment.
-
-## Project documents
-
-- [docs/PROGRESS.md](docs/PROGRESS.md): the checklist of stages and activities.
-- [docs/RESULTS.md](docs/RESULTS.md): what happened in each activity, with a summary per stage.
-- [docs/FINDINGS.md](docs/FINDINGS.md): permission limits, surprises and design decisions found along the way.
