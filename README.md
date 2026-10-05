@@ -221,7 +221,7 @@ Four GitHub Actions workflows in `.github/workflows/`:
 
 **Design choices**
 
-- **Keyless AWS access.** The jobs assume a role through GitHub OIDC; no long-lived AWS keys are used by the pipeline. The deploy role is scoped to this repository and can only manage `eks-damian-*` and `sentinel-damian-*` IAM roles.
+- **Keyless AWS access.** The jobs assume a role through GitHub OIDC; no long-lived AWS keys are used by the pipeline. The deploy role is scoped to this repository and follows least privilege (see below).
 - **Plan then apply the same plan.** What was reviewed is what is applied.
 - **A running deploy is never cancelled** (stopping an apply halfway can leave infrastructure half built).
 - **State** is in an S3 bucket (versioned, encrypted) with S3-native locking.
@@ -273,7 +273,8 @@ Each decision below says what I chose, what else I considered, why, and what the
 **9. Keyless CI with a saved plan**
 - *Alternative:* long-lived AWS keys in GitHub secrets.
 - *Why:* the pipeline signs in with GitHub OIDC to a role scoped to this repository, and `apply` runs exactly the plan that `plan` produced. A running deploy is never cancelled, because stopping an apply halfway can leave infrastructure half built.
-- *Trade-off:* the one-time bootstrap still uses static keys, and the role is only as broad as the account's IAM restrictions allow.
+- *Least privilege:* the role has explicit action lists, no service-wide wildcards. EC2 and load balancer actions are limited to the deployment region. EKS actions are limited to `eks-*` clusters, node groups and access entries. IAM is limited to the `eks-damian-*` roles (the deploy role cannot edit itself or add inline policies), attaching is limited to the four EKS managed policies, and passing a role is limited to EKS and EC2. S3 access is limited to the state bucket. The policy was built from the resources Terraform manages and then proven on the real pipeline with a full destroy and rebuild; the one action it was missing (`ec2:DisassociateAddress`) showed up in that test and was added.
+- *Trade-off:* the one-time bootstrap still uses static keys. Most EC2 create actions cannot be restricted to specific resources, so they are limited by region and action only.
 
 **10. Security enforced in layers and tested by the pipeline**
 - *Alternative:* relying on a single security group rule.
