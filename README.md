@@ -67,7 +67,7 @@ Each Terraform module has typed, validated inputs and explicit outputs (`variabl
 
 ## How to clone and run the project
 
-This section is for whoever reviews the project. **You do not need to change anything**: the AWS account, region, resource names, Terraform state bucket, deploy role and GitHub secrets are already set up. Everything is done with GitHub Actions workflows, and **both workflows used below (`destroy` and `deploy`) sign in to AWS through GitHub OIDC** with the repository's deploy role. You need no AWS keys, and nothing is run from your machine.
+This section is for whoever reviews the project. **You do not need to change anything**: the AWS account, region, resource names, Terraform state bucket, OIDC roles and GitHub secrets are already set up. Everything is done with GitHub Actions workflows, and **both workflows used below (`destroy` and `deploy`) sign in to AWS through GitHub OIDC** with the repository's stage roles (read, apply and deploy, see the [CI/CD overview](#cicd-pipeline-overview)). You need no AWS keys, and nothing is run from your machine.
 
 ### 1. Clone
 
@@ -91,7 +91,7 @@ gh workflow run destroy.yml --ref main -f confirm=destroy
 gh run watch
 ```
 
-It takes about 7 minutes. It first deletes the Kubernetes load balancers (they would block the VPC deletion) and then runs `terraform destroy`. Afterwards no VPC, cluster, NAT Gateway or load balancer of the project is left in AWS. The Terraform state bucket and the deploy role stay, because they were created once by the bootstrap and the workflows need them.
+It takes between about 7 and 15 minutes. It first deletes the Kubernetes load balancers (they would block the VPC deletion) and then runs `terraform destroy`. Afterwards no VPC, cluster, NAT Gateway or load balancer of the project is left in AWS. The Terraform state bucket and the three OIDC roles stay, because they were created once by the bootstrap and the workflows need them.
 
 ### 3. Build the environment
 
@@ -142,8 +142,8 @@ tflint --config ../../../.tflint.hcl
 
 ### Good to know
 
-- **It runs in this repository.** The AWS deploy role only trusts this repository, so a fork cannot sign in to AWS with it. This is intentional.
-- **The bootstrap has already been run.** The `bootstrap` workflow creates the Terraform state bucket and the deploy role once. You do not need to run it; it is only needed to set the project up in a new AWS account, and then it requires an AWS access key and secret key stored as repository secrets. `deploy` and `destroy` do not use those keys, they sign in through the deploy role with OIDC. The two key secrets are still in the repository settings even though nothing uses them any more: they were kept on purpose as evidence of how the project was bootstrapped.
+- **It runs in this repository.** The AWS roles only trust this repository, so a fork cannot sign in to AWS with them. This is intentional.
+- **The bootstrap has already been run.** The `bootstrap` workflow creates the Terraform state bucket and the three OIDC roles once. You do not need to run it; it is only needed to set the project up in a new AWS account, and then it requires an AWS access key and secret key stored as repository secrets. `deploy` and `destroy` do not use those keys, they sign in through the deploy role with OIDC. The two key secrets are still in the repository settings even though nothing uses them any more: they were kept on purpose as evidence of how the project was bootstrapped.
 - **It needs the challenge AWS account.** If the account or its role has been closed or cleaned up, the `plan` job fails when signing in to AWS.
 - **A stale plan is not an error to fix.** If `apply` says `Saved plan is stale`, start a new **deploy** run instead of re-running the old one.
 - **The end-to-end test retries for up to 10 minutes** because a new load balancer can take a few minutes to start answering.
@@ -216,20 +216,30 @@ Four GitHub Actions workflows in `.github/workflows/`:
 |---|---|---|
 | `ci` | every push and pull request | `terraform fmt -check`, `terraform validate` for every module and the environment, `tflint` (recommended preset), `kubeconform` on the Kubernetes manifests. No AWS access. |
 | `deploy` | every push (docs-only changes ignored) and manual run | The full pipeline below. Apply and deployment run only on `main`. |
-| `bootstrap` | manual, one time | Creates the Terraform state bucket and the deploy role, and prints PASS/DENIED for each permission it tests. |
-| `destroy` | manual, requires typing `destroy` | Deletes the Kubernetes load balancers, then runs `terraform destroy`. |
+| `bootstrap` | manual, one time | Creates the Terraform state bucket and the three OIDC roles (read, apply, deploy), and prints PASS/DENIED for each permission it tests. |
+| `destroy` | manual, requires typing `destroy` | Two jobs: deletes the Kubernetes load balancers (deploy role), then runs `terraform destroy` (apply role). |
 
 **The `deploy` workflow, in order:**
 
-1. `plan`: signs in to AWS with OIDC, runs `init`, `validate` and `plan`, shows the plan in the job summary and uploads it as an artifact.
-2. `apply`: applies exactly that saved plan (main only).
-3. `deploy-backend`: server-side dry run of the manifests against the real cluster, apply, wait for the rollout, wait for the internal load balancer hostname.
-4. `deploy-gateway`: render the templates with the backend hostname, dry run, apply, wait for the rollout and the public load balancer hostname.
-5. `e2e-test`: calls the public load balancer until it returns `Hello from backend`, then runs `scripts/verify-exposure.sh`, which fails the pipeline if the backend is ever reachable from the internet. It asserts that the backend load balancer is internal, the gateway one is internet-facing, no backend security group allows `0.0.0.0/0`, the backend only allows `10.10.0.0/16`, no instance has a public IP, and the backend does not answer from outside the VPC.
+1. `plan` (read role): signs in to AWS with OIDC, runs `init`, `validate` and `plan`, shows the plan in the job summary and uploads it as an artifact.
+2. `apply` (apply role, `production` environment): applies exactly that saved plan (main only).
+3. `deploy-backend` (deploy role, `production` environment): server-side dry run of the manifests against the real cluster, apply, wait for the rollout, wait for the internal load balancer hostname.
+4. `deploy-gateway` (deploy role, `production` environment): render the templates with the backend hostname, dry run, apply, wait for the rollout and the public load balancer hostname.
+5. `e2e-test` (read role): calls the public load balancer until it returns `Hello from backend`, then runs `scripts/verify-exposure.sh`, which fails the pipeline if the backend is ever reachable from the internet. It asserts that the backend load balancer is internal, the gateway one is internet-facing, no backend security group allows `0.0.0.0/0`, the backend only allows `10.10.0.0/16`, no instance has a public IP, and the backend does not answer from outside the VPC.
+
+**One least-privilege role per stage**
+
+| Stage | Role | What it can do | Who can assume it |
+|---|---|---|---|
+| `plan`, `e2e-test` | `sentinel-damian-gha-read` | Read-only: describe calls, read the Terraform state, create and delete only the state lock file | Any branch or pull request of this repository |
+| `apply`, `destroy` | `sentinel-damian-gha-apply` | Create and delete the VPCs, peering, EKS clusters and the `eks-damian-*` roles, with an explicit action list (details in [design decision 9](#design-decisions-and-trade-offs)) | Only jobs that run in the `production` environment |
+| `deploy-backend`, `deploy-gateway`, load balancer cleanup | `sentinel-damian-gha-deploy` | `eks:DescribeCluster` and Kubernetes cluster-admin through an EKS access entry | Only jobs that run in the `production` environment |
+
+The `production` GitHub environment is restricted to the `main` branch. It has no required reviewers on purpose, so a reviewer who can run workflows is not blocked by an approval step, but code on any other branch can neither start a job in it nor assume the write roles.
 
 **Design choices**
 
-- **Keyless AWS access.** The jobs assume a role through GitHub OIDC; no long-lived AWS keys are used by the pipeline. The deploy role is scoped to this repository and follows least privilege (see below).
+- **Keyless AWS access.** The jobs assume roles through GitHub OIDC; no long-lived AWS keys are used by the pipeline.
 - **Plan then apply the same plan.** What was reviewed is what is applied.
 - **A running deploy is never cancelled** (stopping an apply halfway can leave infrastructure half built).
 - **State** is in an S3 bucket (versioned, encrypted) with S3-native locking.
@@ -241,6 +251,8 @@ The `deploy` pipeline ends with an automated end-to-end test, so every run is it
 ![End-to-end test in GitHub Actions](assets/evidence-e2e-test.png)
 
 The first nine attempts are empty on purpose: right after a rebuild a brand-new load balancer needs about two minutes before it starts answering, and the test retries (for up to 10 minutes) instead of failing on a healthy system. The step that follows in the same job runs `scripts/verify-exposure.sh`, which checks that the backend is internal and not reachable from the internet. A repeat run against the existing environment passes on the first attempt.
+
+**Stage separation, tested.** To prove the write roles are really out of reach for a branch, a temporary branch ran two jobs that try what a branch must not be able to do. AWS refused the apply role to the job running on the branch, and GitHub refused to start the job that targets the `production` environment: `Branch "test/boundary" is not allowed to deploy to production due to environment protection rules.` ([open the run](https://github.com/damvp0320/rapyd-sentinel/actions/runs/37270398768)). The branch was deleted afterwards; the run stays in the Actions history. The run just before it failed only because of a typo in the test workflow's YAML.
 
 ## Design decisions and trade-offs
 
@@ -286,11 +298,11 @@ Each decision below says what I chose, what else I considered, why, and what the
 - *Why:* they create many extra resources (KMS keys, log groups, an OIDC provider) that the restricted permissions could block. Three small modules (`network`, `peering`, `eks`) with typed inputs and explicit outputs are easy to explain and to review.
 - *Trade-off:* fewer features than the community modules, and the maintenance is ours.
 
-**9. Keyless CI with a saved plan**
-- *Alternative:* long-lived AWS keys in GitHub secrets.
-- *Why:* the pipeline signs in with GitHub OIDC to a role scoped to this repository, and `apply` runs exactly the plan that `plan` produced. A running deploy is never cancelled, because stopping an apply halfway can leave infrastructure half built.
-- *Least privilege:* the role has explicit action lists, no service-wide wildcards. EC2 and load balancer actions are limited to the deployment region. EKS actions are limited to `eks-*` clusters, node groups and access entries. IAM is limited to the `eks-damian-*` roles (the deploy role cannot edit itself or add inline policies), attaching is limited to the four EKS managed policies, and passing a role is limited to EKS and EC2. S3 access is limited to the state bucket. The policy was built from the resources Terraform manages and then proven on the real pipeline with a full destroy and rebuild; the one action it was missing (`ec2:DisassociateAddress`) showed up in that test and was added.
-- *Trade-off:* the one-time bootstrap still uses static keys. Most EC2 create actions cannot be restricted to specific resources, so they are limited by region and action only.
+**9. Keyless CI, one least-privilege role per stage, and a saved plan**
+- *Alternatives:* long-lived AWS keys in GitHub secrets, or a single OIDC role used by every job.
+- *Why:* the pipeline signs in with GitHub OIDC, and each stage gets only what it needs: `plan` and the end-to-end test use a read-only role that any branch may assume, while `apply`, `destroy` and the Kubernetes deploys use roles that only jobs in the `production` environment (limited to `main`) can assume. So a plan on a feature branch cannot change anything, and a stray branch cannot reach the write roles. `apply` runs exactly the plan that `plan` produced, and a running deploy is never cancelled, because stopping an apply halfway can leave infrastructure half built.
+- *Least privilege in the apply role:* explicit action lists, no service-wide wildcards. EC2 and load balancer actions are limited to the deployment region. EKS actions are limited to `eks-*` clusters, node groups and access entries. IAM is limited to the `eks-damian-*` roles (the roles cannot edit themselves or add inline policies), attaching is limited to the four EKS managed policies, and passing a role is limited to EKS and EC2. S3 access is limited to the state bucket. The policy was built from the resources Terraform manages and then proven on the real pipeline with a full destroy and rebuild; the one action it was missing (`ec2:DisassociateAddress`) showed up in that test and was added.
+- *Trade-off:* the one-time bootstrap still uses static keys. Most EC2 create actions cannot be restricted to specific resources, so they are limited by region and action only. The `production` environment has no required reviewers, so anyone who can run the workflow on `main` can apply.
 
 **10. Security enforced in layers and tested by the pipeline**
 - *Alternative:* relying on a single security group rule.
@@ -321,7 +333,7 @@ Things that were left out or kept minimal because of the time available:
 - **No NetworkPolicy, service mesh or observability.** Isolation relies on the VPC, routes and security groups; there are no dashboards, centralised logs or alerts.
 - **Minimal application.** The backend and the proxy are stock NGINX images with default security settings (running as root), two fixed replicas each, no autoscaling and no pod disruption budgets.
 - **Single environment.** One `poc` environment and one Terraform state; no staging or production.
-- **Static AWS keys remain as repository secrets, on purpose.** Only the one-time bootstrap workflow uses them (to create the state bucket and the deploy role before OIDC could exist); `deploy` and `destroy` use OIDC and never read them. They were not deleted after the bootstrap so that they remain as evidence of how the whole process was done: the secret names are visible in the repository settings and the bootstrap run logs show exactly what they were used for. They are the temporary challenge credentials and expire with the challenge access. In a real environment they would be deleted after the bootstrap, or the bootstrap would also run through OIDC.
+- **Static AWS keys remain as repository secrets, on purpose.** Only the one-time bootstrap workflow uses them (to create the state bucket and the OIDC roles before OIDC could exist); `deploy` and `destroy` use OIDC and never read them. They were not deleted after the bootstrap so that they remain as evidence of how the whole process was done: the secret names are visible in the repository settings and the bootstrap run logs show exactly what they were used for. They are the temporary challenge credentials and expire with the challenge access. In a real environment they would be deleted after the bootstrap, or the bootstrap would also run through OIDC.
 - **Limited linting and testing.** The AWS-specific tflint rules are not enabled (they download a plugin at run time), and `kubeconform` validates against the Kubernetes 1.31 schemas while the clusters run 1.35; the server-side dry run covers the real API. There are no unit tests or policy checks, only the end-to-end test and the exposure checks.
 - **Simplified diagram.** No resource IDs, load balancers drawn as single icons, no legend.
 
@@ -330,8 +342,8 @@ Things that were left out or kept minimal because of the time available:
 | Limit | Effect and what a real environment would do |
 |---|---|
 | `servicequotas:GetServiceQuota` is denied | The Elastic IP quota could not be checked before creating four NAT Gateways. A real environment would grant read access and raise quotas up front. |
-| `iam:UpdateAssumeRolePolicy` is denied | A mistake in the deploy role's trust policy could not be fixed in place, so a new role (`sentinel-damian-gha-v2`) was created. The role would normally be managed in Terraform. |
-| `iam:DeleteRolePolicy` is denied | The superseded role could not be removed and remains unused. An administrator would delete it. |
+| `iam:UpdateAssumeRolePolicy` is denied | A mistake in a role's trust policy cannot be fixed in place, so roles are replaced by new ones: the three stage roles replaced an earlier single role. In a real environment the roles would be managed in Terraform. |
+| Roles and role policies cannot be deleted (`iam:DeleteRolePolicy` is denied) | The two superseded single-purpose roles (`sentinel-damian-gha-v2` and `sentinel-damian-gha`) cannot be removed, so their permissions were replaced with a deny-all policy and they remain as harmless leftovers. An administrator would delete them. |
 | The account is shared and IAM role names are global | All names carry a `damian` segment to avoid collisions. Normally there is one account per environment. |
 | The repository uses GitHub's immutable OIDC subject claim | The first OIDC sign-in failed; the trust policy now accepts both subject formats for this repository only. |
 
@@ -346,5 +358,5 @@ Things that were left out or kept minimal because of the time available:
 - **Deployment gating:** a protected `production` environment with manual approval before `apply`, and pull-request plans posted as comments.
 - **Hardening:** non-root, read-only containers, Pod Security Standards, pinned and scanned images, a WAF in front of the gateway.
 - **Scaling and cost:** horizontal pod autoscaling and Karpenter, spot nodes for non-critical workloads, and a single NAT Gateway in non-production environments.
-- **Bootstrap and structure:** manage the state bucket and deploy role in a separate Terraform stack, add `staging`/`prod` environments, and move to Transit Gateway or PrivateLink if more VPCs are added.
+- **Bootstrap and structure:** manage the state bucket and the OIDC roles in a separate Terraform stack, add `staging`/`prod` environments, and move to Transit Gateway or PrivateLink if more VPCs are added.
 - **Testing:** Terraform tests (`terraform test`), policy checks (for example Checkov or OPA) and smoke tests after each deployment.
