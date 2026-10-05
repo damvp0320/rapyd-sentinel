@@ -68,7 +68,7 @@ Each Terraform module has typed, validated inputs and explicit outputs (`variabl
 
 ## How to clone and run the project
 
-This section is for whoever reviews the project. **You do not need to change anything**: the AWS account, region, resource names, Terraform state bucket, deploy role and GitHub secrets are already set up. You only start the workflow and check the result. Everything is created by GitHub Actions; nobody runs `terraform apply` on a laptop.
+This section is for whoever reviews the project. **You do not need to change anything**: the AWS account, region, resource names, Terraform state bucket, deploy role and GitHub secrets are already set up. Everything is done with GitHub Actions workflows, and **both workflows used below (`destroy` and `deploy`) sign in to AWS through GitHub OIDC** with the repository's deploy role. You need no AWS keys, and nothing is run from your machine.
 
 ### 1. Clone
 
@@ -77,26 +77,39 @@ git clone https://github.com/damvp0320/rapyd-sentinel.git
 cd rapyd-sentinel
 ```
 
-Cloning is only needed to read the code or run the optional local checks (step 5). The pipeline runs in GitHub, in this repository, and needs write access to the repository to start workflows.
+Cloning is only needed to read the code or run the optional local checks (step 6). The workflows run in GitHub, in this repository, and starting them needs write access to the repository.
 
-### 2. Run the pipeline
+### 2. Destroy the existing environment (only if you want to see it built from zero)
+
+The environment may already be running from the author's last test. To watch it being created from nothing, destroy it first. If you only want to check that the pipeline works, skip this step: `deploy` will report `No changes` and still run the end-to-end test.
+
+**From the GitHub website:** open the **Actions** tab, select the **destroy** workflow, click **Run workflow** and type `destroy` in the confirmation box.
+
+**From the command line** (GitHub CLI, logged in with `gh auth login`):
+
+```bash
+gh workflow run destroy.yml --ref main -f confirm=destroy
+gh run watch
+```
+
+It takes about 7 minutes. It first deletes the Kubernetes load balancers (they would block the VPC deletion) and then runs `terraform destroy`. Afterwards no VPC, cluster, NAT Gateway or load balancer of the project is left in AWS. The Terraform state bucket and the deploy role stay, because they were created once by the bootstrap and the workflows need them.
+
+### 3. Build the environment
 
 **From the GitHub website:** open the **Actions** tab, select the **deploy** workflow, click **Run workflow**, keep the branch `main` and confirm.
 
-**From the command line** (GitHub CLI, logged in with `gh auth login`):
+**From the command line:**
 
 ```bash
 gh workflow run deploy.yml --ref main
 gh run watch
 ```
 
-A push to `main` runs the same pipeline. A push to any other branch only runs the checks and a Terraform **plan**; it changes nothing in AWS.
+A push to `main` runs the same pipeline. A push to any other branch only runs the checks and a Terraform **plan**; it changes nothing in AWS. Creating everything from zero takes about 15 minutes, mostly the two EKS clusters. The jobs run in this order: `plan`, `apply`, `deploy-backend`, `deploy-gateway`, `e2e-test` (details in the [CI/CD overview](#cicd-pipeline-overview)).
 
-### 3. Check the result
+### 4. Check the result
 
-A green `deploy` run means every step passed, including the end-to-end test. The job summaries show the Terraform plan and outputs, the addresses of both load balancers, the request that returned `Hello from backend`, and six PASS lines of exposure checks.
-
-If the infrastructure already exists (it may, from the author's last run), Terraform reports `No changes` and the whole run takes a few minutes; this is the expected result of a repeat run. To watch everything being created from nothing, run the **destroy** workflow first (step 4) and then **deploy** again. A full creation takes about 15 to 20 minutes, mostly the two EKS clusters.
+A green `deploy` run means every step passed, including the end-to-end test. The job summaries show the Terraform plan and outputs, the addresses of both load balancers, the request that returned `Hello from backend`, and six PASS lines of exposure checks. Right after a build from zero, the first attempts of the end-to-end test are empty for about two minutes while the new load balancer starts answering; this is expected, see [Evidence](#evidence-that-it-works).
 
 To call the system yourself (needs AWS CLI access to the account and `kubectl`):
 
@@ -112,16 +125,11 @@ Expected output:
 Hello from backend
 ```
 
-### 4. Tear everything down
+### 5. When you are done: destroy it again
 
-```bash
-gh workflow run destroy.yml -f confirm=destroy
-gh run watch
-```
+Run the same **destroy** workflow as in step 2. While running, the environment costs roughly two EKS control planes, four NAT Gateways and four small nodes, so please destroy it when you finish reviewing.
 
-Or in the Actions tab: **destroy** > **Run workflow** > type `destroy`. It deletes the Kubernetes load balancers first (they would block the VPC deletion) and then runs `terraform destroy`. The state bucket and the deploy role are created once by the bootstrap and are not removed. While running, the environment costs roughly two EKS control planes, four NAT Gateways and four small nodes, so destroy it when you are done.
-
-### 5. Optional: run the checks locally
+### 6. Optional: run the checks locally
 
 No AWS credentials needed. On macOS: `brew install hashicorp/tap/terraform terraform-linters/tap/tflint`.
 
