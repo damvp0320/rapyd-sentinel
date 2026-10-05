@@ -52,6 +52,7 @@
         "ec2:DeleteVpc",
         "ec2:DeleteVpcPeeringConnection",
         "ec2:DetachInternetGateway",
+        "ec2:DisassociateAddress",
         "ec2:DisassociateRouteTable",
         "ec2:ModifySecurityGroupRules",
         "ec2:ModifySubnetAttribute",
