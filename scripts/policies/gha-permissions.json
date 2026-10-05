@@ -2,69 +2,187 @@
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "NetworkingAndCompute",
+      "Sid": "Ec2NetworkRead",
       "Effect": "Allow",
       "Action": [
-        "ec2:*",
-        "elasticloadbalancing:*",
-        "eks:*",
-        "autoscaling:*",
-        "logs:*"
+        "ec2:DescribeAccountAttributes",
+        "ec2:DescribeAddresses",
+        "ec2:DescribeAddressesAttribute",
+        "ec2:DescribeAvailabilityZones",
+        "ec2:DescribeInstances",
+        "ec2:DescribeInternetGateways",
+        "ec2:DescribeNatGateways",
+        "ec2:DescribeNetworkAcls",
+        "ec2:DescribeNetworkInterfaces",
+        "ec2:DescribeRouteTables",
+        "ec2:DescribeSecurityGroupRules",
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeSubnets",
+        "ec2:DescribeTags",
+        "ec2:DescribeVpcAttribute",
+        "ec2:DescribeVpcPeeringConnections",
+        "ec2:DescribeVpcs"
       ],
-      "Resource": "*"
+      "Resource": "*",
+      "Condition": { "StringEquals": { "aws:RequestedRegion": "__REGION__" } }
     },
     {
-      "Sid": "StateBucket",
+      "Sid": "Ec2NetworkWrite",
       "Effect": "Allow",
-      "Action": "s3:*",
+      "Action": [
+        "ec2:AcceptVpcPeeringConnection",
+        "ec2:AllocateAddress",
+        "ec2:AssociateRouteTable",
+        "ec2:AttachInternetGateway",
+        "ec2:AuthorizeSecurityGroupIngress",
+        "ec2:CreateInternetGateway",
+        "ec2:CreateNatGateway",
+        "ec2:CreateRoute",
+        "ec2:CreateRouteTable",
+        "ec2:CreateSubnet",
+        "ec2:CreateTags",
+        "ec2:CreateVpc",
+        "ec2:CreateVpcPeeringConnection",
+        "ec2:DeleteInternetGateway",
+        "ec2:DeleteNatGateway",
+        "ec2:DeleteRoute",
+        "ec2:DeleteRouteTable",
+        "ec2:DeleteSubnet",
+        "ec2:DeleteTags",
+        "ec2:DeleteVpc",
+        "ec2:DeleteVpcPeeringConnection",
+        "ec2:DetachInternetGateway",
+        "ec2:DisassociateRouteTable",
+        "ec2:ModifySecurityGroupRules",
+        "ec2:ModifySubnetAttribute",
+        "ec2:ModifyVpcAttribute",
+        "ec2:ReleaseAddress",
+        "ec2:ReplaceRoute",
+        "ec2:RevokeSecurityGroupIngress",
+        "ec2:UpdateSecurityGroupRuleDescriptionsIngress"
+      ],
+      "Resource": "*",
+      "Condition": { "StringEquals": { "aws:RequestedRegion": "__REGION__" } }
+    },
+    {
+      "Sid": "ElbRead",
+      "Effect": "Allow",
+      "Action": ["elasticloadbalancing:DescribeLoadBalancers"],
+      "Resource": "*",
+      "Condition": { "StringEquals": { "aws:RequestedRegion": "__REGION__" } }
+    },
+    {
+      "Sid": "EksClusterNodegroupAccess",
+      "Effect": "Allow",
+      "Action": [
+        "eks:AssociateAccessPolicy",
+        "eks:CreateAccessEntry",
+        "eks:CreateCluster",
+        "eks:CreateNodegroup",
+        "eks:DeleteAccessEntry",
+        "eks:DeleteCluster",
+        "eks:DeleteNodegroup",
+        "eks:DescribeAccessEntry",
+        "eks:DescribeCluster",
+        "eks:DescribeNodegroup",
+        "eks:DescribeUpdate",
+        "eks:DisassociateAccessPolicy",
+        "eks:ListAssociatedAccessPolicies",
+        "eks:ListNodegroups",
+        "eks:ListUpdates",
+        "eks:TagResource",
+        "eks:UntagResource",
+        "eks:UpdateAccessEntry",
+        "eks:UpdateClusterConfig",
+        "eks:UpdateClusterVersion",
+        "eks:UpdateNodegroupConfig",
+        "eks:UpdateNodegroupVersion"
+      ],
       "Resource": [
-        "arn:aws:s3:::__STATE_BUCKET__",
-        "arn:aws:s3:::__STATE_BUCKET__/*"
+        "arn:aws:eks:__REGION__:__ACCOUNT_ID__:cluster/eks-*",
+        "arn:aws:eks:__REGION__:__ACCOUNT_ID__:nodegroup/eks-*/*",
+        "arn:aws:eks:__REGION__:__ACCOUNT_ID__:access-entry/eks-*/*"
       ]
     },
     {
-      "Sid": "ScopedRoles",
+      "Sid": "EksGlobalRead",
+      "Effect": "Allow",
+      "Action": ["eks:ListClusters", "eks:DescribeClusterVersions", "eks:DescribeAddonVersions"],
+      "Resource": "*",
+      "Condition": { "StringEquals": { "aws:RequestedRegion": "__REGION__" } }
+    },
+    {
+      "Sid": "TerraformStateBucket",
+      "Effect": "Allow",
+      "Action": ["s3:ListBucket"],
+      "Resource": "arn:aws:s3:::__STATE_BUCKET__"
+    },
+    {
+      "Sid": "TerraformStateObjects",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+      "Resource": "arn:aws:s3:::__STATE_BUCKET__/*"
+    },
+    {
+      "Sid": "ManageClusterAndNodeRolesOnly",
       "Effect": "Allow",
       "Action": [
         "iam:CreateRole",
         "iam:DeleteRole",
         "iam:GetRole",
-        "iam:UpdateRole",
-        "iam:TagRole",
-        "iam:UntagRole",
-        "iam:ListRolePolicies",
         "iam:ListAttachedRolePolicies",
         "iam:ListInstanceProfilesForRole",
-        "iam:AttachRolePolicy",
-        "iam:DetachRolePolicy",
-        "iam:PutRolePolicy",
-        "iam:GetRolePolicy",
-        "iam:DeleteRolePolicy",
-        "iam:UpdateAssumeRolePolicy",
-        "iam:PassRole"
+        "iam:ListRolePolicies",
+        "iam:ListRoleTags",
+        "iam:TagRole",
+        "iam:UntagRole"
       ],
-      "Resource": [
-        "arn:aws:iam::*:role/eks-damian-*",
-        "arn:aws:iam::*:role/sentinel-damian-*"
-      ]
+      "Resource": "arn:aws:iam::__ACCOUNT_ID__:role/eks-damian-*"
     },
     {
-      "Sid": "ServiceLinkedRoles",
+      "Sid": "AttachOnlyTheFourEksManagedPolicies",
       "Effect": "Allow",
-      "Action": [
-        "iam:CreateServiceLinkedRole",
-        "iam:GetPolicy",
-        "iam:GetPolicyVersion"
-      ],
-      "Resource": "*"
+      "Action": ["iam:AttachRolePolicy", "iam:DetachRolePolicy"],
+      "Resource": "arn:aws:iam::__ACCOUNT_ID__:role/eks-damian-*",
+      "Condition": {
+        "ArnEquals": {
+          "iam:PolicyARN": [
+            "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy",
+            "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy",
+            "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy",
+            "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+          ]
+        }
+      }
     },
     {
-      "Sid": "ReadServiceLinkedRoles",
+      "Sid": "PassClusterAndNodeRolesToEksAndEc2Only",
       "Effect": "Allow",
-      "Action": [
-        "iam:GetRole"
-      ],
-      "Resource": "arn:aws:iam::*:role/aws-service-role/*"
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::__ACCOUNT_ID__:role/eks-damian-*",
+      "Condition": { "StringEquals": { "iam:PassedToService": ["eks.amazonaws.com", "ec2.amazonaws.com"] } }
+    },
+    {
+      "Sid": "ReadServiceLinkedRolesForEks",
+      "Effect": "Allow",
+      "Action": "iam:GetRole",
+      "Resource": "arn:aws:iam::__ACCOUNT_ID__:role/aws-service-role/*"
+    },
+    {
+      "Sid": "CreateServiceLinkedRolesIfMissing",
+      "Effect": "Allow",
+      "Action": "iam:CreateServiceLinkedRole",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "iam:AWSServiceName": [
+            "eks.amazonaws.com",
+            "eks-nodegroup.amazonaws.com",
+            "elasticloadbalancing.amazonaws.com",
+            "autoscaling.amazonaws.com"
+          ]
+        }
+      }
     }
   ]
 }
