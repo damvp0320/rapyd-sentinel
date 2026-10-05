@@ -61,4 +61,4 @@ Mark items with `[x]` as they are completed.
 
 - [x] 20. Final architecture diagram saved to `docs/assets/architecture.png`
 - [x] 21. README: how to run, networking, proxy-to-backend flow, CI/CD overview, permission limits hit, trade-offs, next steps
-- [ ] 22. Manual-only `destroy.yml`, final clean run from a fresh push, then submit
+- [x] 22. Manual-only `destroy.yml`, final clean run from a fresh push, then submit
