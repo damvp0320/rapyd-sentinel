@@ -5,7 +5,7 @@ name: deploy
 on:
   push:
     paths-ignore:
-      - 'docs/**'
+      - 'assets/**'
       - '*.md'
   # Manual run from the Actions tab (on main it also applies and deploys), no commit needed.
   workflow_dispatch:
