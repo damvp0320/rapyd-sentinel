@@ -19,6 +19,7 @@ Each domain has its own network and its own Kubernetes cluster, and the two talk
 - [How networking is configured between VPCs and clusters](#how-networking-is-configured-between-vpcs-and-clusters)
 - [How the proxy reaches the backend](#how-the-proxy-reaches-the-backend)
 - [CI/CD pipeline overview](#cicd-pipeline-overview)
+- [Evidence that it works](#evidence-that-it-works)
 - [Design decisions and trade-offs](#design-decisions-and-trade-offs)
 - [Trade-offs and limitations](#trade-offs-and-limitations)
 - [What I would have improved or added next](#what-i-would-have-improved-or-added-next)
@@ -225,6 +226,14 @@ Four GitHub Actions workflows in `.github/workflows/`:
 - **Plan then apply the same plan.** What was reviewed is what is applied.
 - **A running deploy is never cancelled** (stopping an apply halfway can leave infrastructure half built).
 - **State** is in an S3 bucket (versioned, encrypted) with S3-native locking.
+
+## Evidence that it works
+
+The `deploy` pipeline ends with an automated end-to-end test, so every run is its own proof. This screenshot is the `e2e-test` job of the run that rebuilt the whole environment from an empty AWS account ([open the run](https://github.com/damvp0320/rapyd-sentinel/actions/runs/37265072667)): all five jobs are green, the job signed in to AWS with OIDC, and the request through the public gateway load balancer returned `Hello from backend`, a response produced by a pod in the other VPC.
+
+![End-to-end test in GitHub Actions](docs/assets/evidence-e2e-test.png)
+
+The first nine attempts are empty on purpose: right after a rebuild a brand-new load balancer needs about two minutes before it starts answering, and the test retries (for up to 10 minutes) instead of failing on a healthy system. The step that follows in the same job runs `scripts/verify-exposure.sh`, which checks that the backend is internal and not reachable from the internet. A repeat run against the existing environment passes on the first attempt.
 
 ## Design decisions and trade-offs
 
