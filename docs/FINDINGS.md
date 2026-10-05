@@ -73,7 +73,7 @@ Add new findings at the bottom and keep numbering.
 ## Follow-ups to remember
 
 - **Finding 15 – static AWS keys are still in GitHub secrets** (activity 6)
-  - They are used only by the manual bootstrap workflow; the deploy workflow uses OIDC. They expire with the challenge access, but at the end they should be deleted from the repository secrets and the bootstrap switched to OIDC as well. Mention in the README.
+  - They are used only by the manual bootstrap workflow; the deploy and destroy workflows use OIDC. Decision: they were NOT deleted, although nothing uses them any more, so that they remain as evidence of how the whole process was done (the secret names in the repository settings plus the bootstrap run logs). They are the temporary challenge credentials and expire with the challenge access. In a real environment they would be deleted after the bootstrap, or the bootstrap would also run through OIDC. Documented in the README (limitations and the run guide).
 
 - **Finding 17 – a failed apply is safe to resume** (activity 13)
   - The first apply stopped at the node groups after creating 68 resources. State was saved in S3, so the next run planned only the 2 missing resources. Because the plan is a saved artifact per run, never re-run an old failed run (its plan is stale): push a new commit instead.

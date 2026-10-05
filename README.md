@@ -144,7 +144,7 @@ tflint --config ../../../.tflint.hcl
 ### Good to know
 
 - **It runs in this repository.** The AWS deploy role only trusts this repository, so a fork cannot sign in to AWS with it. This is intentional.
-- **The bootstrap has already been run.** The `bootstrap` workflow creates the Terraform state bucket and the deploy role once. You do not need to run it; it is only needed to set the project up in a new AWS account, and then it requires an AWS access key and secret key stored as repository secrets. `deploy` and `destroy` do not use those keys, they sign in through the deploy role with OIDC.
+- **The bootstrap has already been run.** The `bootstrap` workflow creates the Terraform state bucket and the deploy role once. You do not need to run it; it is only needed to set the project up in a new AWS account, and then it requires an AWS access key and secret key stored as repository secrets. `deploy` and `destroy` do not use those keys, they sign in through the deploy role with OIDC. The two key secrets are still in the repository settings even though nothing uses them any more: they were kept on purpose as evidence of how the project was bootstrapped.
 - **It needs the challenge AWS account.** If the account or its role has been closed or cleaned up, the `plan` job fails when signing in to AWS.
 - **A stale plan is not an error to fix.** If `apply` says `Saved plan is stale`, start a new **deploy** run instead of re-running the old one.
 - **The end-to-end test retries for up to 10 minutes** because a new load balancer can take a few minutes to start answering.
@@ -322,7 +322,7 @@ Things that were left out or kept minimal because of the time available:
 - **No NetworkPolicy, service mesh or observability.** Isolation relies on the VPC, routes and security groups; there are no dashboards, centralised logs or alerts.
 - **Minimal application.** The backend and the proxy are stock NGINX images with default security settings (running as root), two fixed replicas each, no autoscaling and no pod disruption budgets.
 - **Single environment.** One `poc` environment and one Terraform state; no staging or production.
-- **Static AWS keys remain as repository secrets.** Only the one-time bootstrap workflow uses them; the deploy pipeline uses OIDC. Moving the bootstrap to OIDC as well was not done.
+- **Static AWS keys remain as repository secrets, on purpose.** Only the one-time bootstrap workflow uses them (to create the state bucket and the deploy role before OIDC could exist); `deploy` and `destroy` use OIDC and never read them. They were not deleted after the bootstrap so that they remain as evidence of how the whole process was done: the secret names are visible in the repository settings and the bootstrap run logs show exactly what they were used for. They are the temporary challenge credentials and expire with the challenge access. In a real environment they would be deleted after the bootstrap, or the bootstrap would also run through OIDC.
 - **Limited linting and testing.** The AWS-specific tflint rules are not enabled (they download a plugin at run time), and `kubeconform` validates against the Kubernetes 1.31 schemas while the clusters run 1.35; the server-side dry run covers the real API. There are no unit tests or policy checks, only the end-to-end test and the exposure checks.
 - **Simplified diagram.** No resource IDs, load balancers drawn as single icons, no legend.
 
