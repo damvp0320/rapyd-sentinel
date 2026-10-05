@@ -135,6 +135,7 @@ tflint --config ../../../.tflint.hcl
 ### Good to know
 
 - **It runs in this repository.** The AWS deploy role only trusts this repository, so a fork cannot sign in to AWS with it. This is intentional.
+- **The bootstrap has already been run.** The `bootstrap` workflow creates the Terraform state bucket and the deploy role once. You do not need to run it; it is only needed to set the project up in a new AWS account, and then it requires an AWS access key and secret key stored as repository secrets. `deploy` and `destroy` do not use those keys, they sign in through the deploy role with OIDC.
 - **It needs the challenge AWS account.** If the account or its role has been closed or cleaned up, the `plan` job fails when signing in to AWS.
 - **A stale plan is not an error to fix.** If `apply` says `Saved plan is stale`, start a new **deploy** run instead of re-running the old one.
 - **The end-to-end test retries for up to 10 minutes** because a new load balancer can take a few minutes to start answering.
