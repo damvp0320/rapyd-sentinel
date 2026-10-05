@@ -101,3 +101,11 @@ Add new findings at the bottom and keep numbering.
 
 - **Finding 24 – cost and time of a full cycle** (activity 22)
   - Measured: destroy about 7 minutes, deploy from nothing about 14 minutes (EKS control planes 7 to 9 minutes each, node groups about 2 minutes each, NAT Gateways about 2 minutes). While running, the cost is dominated by two EKS control planes, four NAT Gateways and four `t3.medium` nodes, so the environment should be destroyed when it is not being reviewed.
+
+- **Finding 25 – the first deploy role was too broad, and could edit itself** (activity 12 follow-up)
+  - The first policy allowed `ec2:*`, `eks:*`, `elasticloadbalancing:*`, `logs:*` and `autoscaling:*` on all resources, `s3:*` on the state bucket, and IAM write actions on both `eks-damian-*` and `sentinel-damian-*` roles. The deploy role's own name (`sentinel-damian-gha-v2`) matched the second pattern, so the pipeline could have changed its own permissions, and it could attach any managed policy or add inline policies.
+  - Fixed: explicit action lists, region condition, EKS actions limited to `eks-*` resources, IAM limited to `eks-damian-*`, `AttachRolePolicy` conditioned on the four EKS managed policies, `PassRole` conditioned on EKS and EC2, S3 limited to list/get/put/delete on the state bucket, and `logs`, `autoscaling` and load balancer writes removed (the cluster creates the load balancers with its own role).
+
+- **Finding 26 – CloudTrail lookup is denied, so a least-privilege policy must be proven by testing** (activity 12 follow-up)
+  - `cloudtrail:LookupEvents` is denied for the IAM user, so the exact calls made by the pipeline could not be read back. The policy was written from the Terraform resources and the workflow commands, then validated on the live pipeline: a `plan` (all reads), a destroy (all deletes) and a rebuild from scratch (all creates). The destroy found one missing action, `ec2:DisassociateAddress` (needed when a NAT Gateway releases its Elastic IP); after adding it the full cycle passed (destroy 70 resources, deploy 70 resources, end-to-end test returned `Hello from backend`).
+  - A real environment would generate the policy from CloudTrail with IAM Access Analyzer and re-check it periodically.
