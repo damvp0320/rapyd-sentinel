@@ -58,7 +58,7 @@ if aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
 else
   step "iam:CreateRole (${ROLE_NAME})" aws iam create-role --role-name "$ROLE_NAME" --assume-role-policy-document "$TRUST"
 fi
-POLICY="$(sed "s/__STATE_BUCKET__/${STATE_BUCKET}/g" "$DIR/policies/gha-permissions.json")"
+POLICY="$(sed -e "s/__STATE_BUCKET__/${STATE_BUCKET}/g" -e "s/__ACCOUNT_ID__/${ACCOUNT_ID}/g" -e "s/__REGION__/${REGION}/g" "$DIR/policies/gha-permissions.json")"
 step "iam:PutRolePolicy (inline deploy policy)" aws iam put-role-policy --role-name "$ROLE_NAME" \
   --policy-name sentinel-damian-deploy --policy-document "$POLICY"
 
